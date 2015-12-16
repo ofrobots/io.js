@@ -297,6 +297,7 @@ function ScriptLineFromPosition(position) {
  */
 function ScriptLocationFromPosition(position,
                                     include_resource_offset) {
+  %DebugPrint("ScriptLocationFromPosition " + position + " include_resource_offset " + include_resource_offset);
   var line = this.lineFromPosition(position);
   if (line == -1) return null;
 
@@ -350,6 +351,8 @@ function ScriptLocationFromLine(opt_line, opt_column, opt_offset_position) {
   if (line == 0) {
     column -= this.column_offset;
   }
+  %DebugPrint("ScriptLocationFromLine opt_line " + opt_line + " opt_column " + opt_column + " opt_offset_position " + opt_offset_position);
+  %DebugPrint("                       line " + line + " column " + column + " this.line_offset " + this.line_offset);
 
   var offset_position = opt_offset_position || 0;
   if (line < 0 || column < 0 || offset_position < 0) return null;

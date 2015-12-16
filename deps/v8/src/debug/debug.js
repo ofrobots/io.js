@@ -456,8 +456,10 @@ ScriptBreakPoint.prototype.set = function (script) {
     column = script.sourceColumnStart_[line];
   }
 
+  %DebugPrint("ScriptBreakpoint#set: line " + this.line() + " column " + column);
   // Convert the line and column into an absolute position within the script.
   var position = Debug.findScriptSourcePosition(script, this.line(), column);
+  %DebugPrint("ScriptBreakPoint#set: position " + position);
 
   // If the position is not found in the script (the script might be shorter
   // than it used to be) just ignore it.
@@ -595,14 +597,20 @@ Debug.sourcePosition = function(f) {
 Debug.findFunctionSourceLocation = function(func, opt_line, opt_column) {
   var script = %FunctionGetScript(func);
   var script_offset = %FunctionGetScriptSourcePosition(func);
-  return script.locationFromLine(opt_line, opt_column, script_offset);
+  %DebugPrint("Debug.findFunctionSourceLocation " + opt_line + ":" + opt_column + " script_offset " + script_offset);
+  var ret = script.locationFromLine(opt_line, opt_column, script_offset);
+  %DebugPrint("    at position " + ret.position);
+  return ret;
 };
 
 
 // Returns the character position in a script based on a line number and an
 // optional position within that line.
 Debug.findScriptSourcePosition = function(script, opt_line, opt_column) {
+  %DebugPrint("$$ Debug.findScriptSourcePosition: " + script.id + " " + opt_line + ":" + opt_column);
   var location = script.locationFromLine(opt_line, opt_column);
+  %DebugPrint("$$ Debug.findScriptSourcePosition: location is (next line)");
+  %DebugPrint(location);
   return location ? location.position : null;
 };
 
@@ -658,15 +666,18 @@ Debug.setBreakPoint = function(func, opt_line, opt_column, opt_condition) {
   }
   // If the script for the function has a name convert this to a script break
   // point.
+  %DebugPrint("Debug.setBreakPoint position " + break_position + " source_position " + source_position + " script.type " + script.type + " script.id " + script.id);
   if (script && script.id) {
     // Adjust the source position to be script relative.
     source_position += %FunctionGetScriptSourcePosition(func);
     // Find line and column for the position in the script and set a script
     // break point from that.
     var location = script.locationFromPosition(source_position, false);
-    return this.setScriptBreakPointById(script.id,
+    var ret = this.setScriptBreakPointById(script.id,
                                         location.line, location.column,
                                         opt_condition);
+    %DebugPrint("ret " + ret);
+    return ret;
   } else {
     // Set a break point directly on the function.
     var break_point = MakeBreakPoint(source_position);
@@ -790,6 +801,8 @@ Debug.findScriptBreakPoint = function(break_point_number, remove) {
 Debug.setScriptBreakPoint = function(type, script_id_or_name,
                                      opt_line, opt_column, opt_condition,
                                      opt_groupId, opt_position_alignment) {
+  %DebugPrint("Debug.setScriptBreakPoint script_id_or_name " + script_id_or_name + " opt_line " + opt_line + " opt_column " + opt_column + " opt_position_alignment " +
+    opt_position_alignment);
   // Create script break point object.
   var script_break_point =
       new ScriptBreakPoint(type, script_id_or_name, opt_line, opt_column,
@@ -805,6 +818,7 @@ Debug.setScriptBreakPoint = function(type, script_id_or_name,
   var scripts = this.scripts();
   for (var i = 0; i < scripts.length; i++) {
     if (script_break_point.matchesScript(scripts[i])) {
+      %DebugPrint("matches Script " + i + " name " + scripts[i].nameOrSourceURL());
       script_break_point.set(scripts[i]);
     }
   }
@@ -817,6 +831,7 @@ Debug.setScriptBreakPointById = function(script_id,
                                          opt_line, opt_column,
                                          opt_condition, opt_groupId,
                                          opt_position_alignment) {
+  %DebugPrint("Debug.setScriptBreakPointById " + script_id + " opt_line " + opt_line + " opt_column " + opt_column);
   return this.setScriptBreakPoint(Debug.ScriptBreakPointType.ScriptId,
                                   script_id, opt_line, opt_column,
                                   opt_condition, opt_groupId,
