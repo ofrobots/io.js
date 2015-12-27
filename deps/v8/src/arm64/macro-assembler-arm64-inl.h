@@ -1434,32 +1434,6 @@ void MacroAssembler::IsObjectNameType(Register object,
 }
 
 
-void MacroAssembler::IsObjectJSObjectType(Register heap_object,
-                                          Register map,
-                                          Register scratch,
-                                          Label* fail) {
-  Ldr(map, FieldMemOperand(heap_object, HeapObject::kMapOffset));
-  IsInstanceJSObjectType(map, scratch, fail);
-}
-
-
-void MacroAssembler::IsInstanceJSObjectType(Register map,
-                                            Register scratch,
-                                            Label* fail) {
-  Ldrb(scratch, FieldMemOperand(map, Map::kInstanceTypeOffset));
-  // If cmp result is lt, the following ccmp will clear all flags.
-  // Z == 0, N == V implies gt condition.
-  Cmp(scratch, FIRST_NONCALLABLE_SPEC_OBJECT_TYPE);
-  Ccmp(scratch, LAST_NONCALLABLE_SPEC_OBJECT_TYPE, NoFlag, ge);
-
-  // If we didn't get a valid label object just fall through and leave the
-  // flags updated.
-  if (fail != NULL) {
-    B(gt, fail);
-  }
-}
-
-
 void MacroAssembler::IsObjectJSStringType(Register object,
                                           Register type,
                                           Label* not_string,
@@ -1683,6 +1657,7 @@ void MacroAssembler::AnnotateInstrumentation(const char* marker_name) {
   movn(xzr, (marker_name[1] << 8) | marker_name[0]);
 }
 
-} }  // namespace v8::internal
+}  // namespace internal
+}  // namespace v8
 
 #endif  // V8_ARM64_MACRO_ASSEMBLER_ARM64_INL_H_

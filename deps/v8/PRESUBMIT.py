@@ -69,6 +69,7 @@ def _V8PresubmitChecks(input_api, output_api):
   from presubmit import SourceProcessor
   from presubmit import CheckExternalReferenceRegistration
   from presubmit import CheckAuthorizedAuthor
+  from presubmit import CheckStatusFiles
 
   results = []
   if not CppLintProcessor().Run(input_api.PresubmitLocalPath()):
@@ -80,6 +81,8 @@ def _V8PresubmitChecks(input_api, output_api):
   if not CheckExternalReferenceRegistration(input_api.PresubmitLocalPath()):
     results.append(output_api.PresubmitError(
         "External references registration check failed"))
+  if not CheckStatusFiles(input_api.PresubmitLocalPath()):
+    results.append(output_api.PresubmitError("Status file check failed"))
   results.extend(CheckAuthorizedAuthor(input_api, output_api))
   return results
 
@@ -284,10 +287,10 @@ def GetPreferredTryMasters(project, change):
       'v8_linux64_rel': set(['defaulttests']),
       'v8_linux64_asan_rel': set(['defaulttests']),
       'v8_linux64_avx2_rel': set(['defaulttests']),
-      'v8_win_rel': set(['defaulttests']),
+      'v8_win_rel_ng': set(['defaulttests']),
       'v8_win_compile_dbg': set(['defaulttests']),
       'v8_win_nosnap_shared_compile_rel': set(['defaulttests']),
-      'v8_win64_rel': set(['defaulttests']),
+      'v8_win64_rel_ng': set(['defaulttests']),
       'v8_mac_rel': set(['defaulttests']),
       'v8_linux_arm_rel': set(['defaulttests']),
       'v8_linux_arm64_rel': set(['defaulttests']),

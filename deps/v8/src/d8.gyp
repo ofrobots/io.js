@@ -50,10 +50,6 @@
         'd8.h',
         'd8.cc',
       ],
-      'defines': [
-        # TODO(jochen): Remove again after this is globally turned on.
-        'V8_IMMINENT_DEPRECATION_WARNINGS',
-      ],
       'conditions': [
         [ 'want_separate_host_toolset==1', {
           'toolsets': [ '<(v8_toolset_for_d8)', ],
@@ -79,6 +75,13 @@
               'dependencies': [
                 'd8_js2c',
               ],
+            }],
+            [ 'v8_postmortem_support=="true"', {
+              'xcode_settings': {
+                'OTHER_LDFLAGS': [
+                   '-Wl,-force_load,<(PRODUCT_DIR)/libv8_base.a'
+                ],
+              },
             }],
           ],
         }],
@@ -109,7 +112,7 @@
       'variables': {
         'js_files': [
           'd8.js',
-          'macros.py',
+          'js/macros.py',
         ],
       },
       'conditions': [
