@@ -16,6 +16,12 @@
 namespace v8 {
 namespace platform {
 
+#define MAX_CATEGORY_GROUPS 100
+static const char* g_category_groups[MAX_CATEGORY_GROUPS] = {0};
+static uint8_t g_category_group_enabled[MAX_CATEGORY_GROUPS] = {0};
+static base::Atomic32 g_category_index = 0;
+static base::LazyMutex g_category_group_mutex = LAZY_MUTEX_INITIALIZER;
+
 
 v8::Platform* CreateDefaultPlatform(int thread_pool_size) {
   DefaultPlatform* platform = new DefaultPlatform();
@@ -31,6 +37,167 @@ bool PumpMessageLoop(v8::Platform* platform, v8::Isolate* isolate) {
 
 
 const int DefaultPlatform::kMaxThreadPoolSize = 4;
+
+
+class TraceBuffer {
+public:
+  static const size_t kTraceBufferSize = 1 << 12; // for now
+
+  TraceBuffer();
+  TraceEvent* AddTraceEvent(size_t* event_index) {
+    DCHECK(!IsFull());
+    *event_index = next_free_++;
+    return &trace_events[*event_index];
+  }
+
+  bool IsFull() const { return next_free_ == kTraceBufferSize; }
+
+private:
+  size_t next_free_;
+  std::array<TraceEvent, kTraceBufferSize> trace_events_;
+};
+
+
+class TraceConfig {
+public:
+  TraceConfig(const std::string& category_filter_string);
+
+  TraceRecordMode GetTraceRecordMode() const { return record_mode_; }
+  bool IsCategoryGroupEnabled(const char* category_group) const;
+
+private:
+  std::vector<std::string> included_categories_;
+  std::vector<std::string> disabled_categories_;
+  std::vector<std::string> excluded_categories_;
+
+  DISALLOW_COPY_AND_ASSIGN(TraceConfig);
+};
+
+std::vector<std::string> SplitString(const std::string& s, char delim) {
+  std::vector<std::string> elements;
+  std::stringstream ss(s);
+  std::string item;
+  while (std::getline(ss, item, delim)) {
+    elements.push_back(item);
+  }
+  return elements;
+}
+
+TraceConfig::TraceConfig(const std::string& category_filter_string,
+                        TraceRecordMode record_mode)
+  : record_mode_(record_mode) {
+  if (!category_filter_string.empty()) {
+    std::vector<std:string> split = SplitString(category_filter_string, ",");
+    for (auto category : split) {
+      // Ignore empty categories
+      if (category.empty())
+        continue;
+      if (category.at(0) == "-") {
+        // Excluded categories start with '-'.
+        // Remove '-' from category string.
+        category = category.substr(1);
+        excluded_categories_.push_back(category);
+      } else if (category.compare(0, strlen(TRACE_DISABLED_BY_DEFAULT("")),
+                                  TRACE_DISABLED_BY_DEFAULT("")) == 0) {
+        // Disabled by default categories.
+        disabled_categories_.push_back(category);
+      } else {
+        included_categories_.push_back(category);
+      }
+    }
+  }
+}
+
+
+bool TraceConfig::IsCategoryGroupEnabled(const std::string& category_group) const {
+  return true; // for  now.
+}
+
+class TraceLog {
+public:
+  enum CategoryGroupEnabledFlags {
+    ENABLED_FOR_RECORDING = 1 << 0,
+    ENABLED_FOR_MONITORING = 1 << 1,
+    ENABLED_FOR_EVENT_CALLBACK = 1 << 2
+  };
+
+  static TraceLog* GetInstance();
+
+  static const unsigned char* GetCategoryGroupEnabled(const char* name);
+  static const char* GetCategoryGroupName(
+      const unsigned char* category_group_enabled);
+  uint64_t AddTraceEvent(char phase, const uint8_t* category_enabled_flag,
+                         const char* name, uint64_t id, uint64_t bind_id,
+                         int32_t num_args, const char** arg_names,
+                         const uint8_t* arg_types, const uint64_t* arg_values,
+                         unsigned int flags);
+  void UpdateTraceEventDuration(const uint8_t* category_enabled_flag,
+                                const char* name, uint64_t handle);
+
+private:
+  static TraceLog* instance_;
+
+  TraceConfig trace_config;
+
+  DISALLOW_COPY_AND_ASSIGN(TraceLog);
+};
+
+// static
+TraceLog* TraceLog::instance_ = nullptr;
+
+// static
+TraceLog* TraceLog::GetInstance() {
+  return instance_ ? instance_ :
+    (instance_ = new TraceLog()); // Leak.
+}
+
+TraceEventHandle TraceLog::AddTraceEvent(
+    char phase,
+    const unsigned char* category_group_enabled,
+    const char* name,
+    unsigned long long id,
+    int num_args,
+    const char** arg_names,
+    const unsigned char* arg_types,
+    const unsigned long long* arg_values,
+    const scoped_refptr<ConvertableToTraceFormat>* convertable_values,
+    unsigned int flags) {
+  TraceEventHandle handle = {0, 0, 0};
+  if (!*category_group_enabled)
+    return handle;
+
+  DCHECK(name);
+  // timestamp
+
+
+  if (*category_group_enabled & (ENABLED_FOR_RECORDING | ENABLED_FOR_MONITORING)) {
+    TraceEvent* trace_event = nullptr;
+    if (!trace_buffer_.IsFull()) {
+      size_t event_index;
+      trace_event = trace_buffer_.AddTraceEvent(event_index);
+    }
+
+    if (trace_event) {
+      trace_event->Initialize(0, // threadid
+                              0, // offset_event_timestamp
+                              0, // thread_now
+                              phase,
+                              category_group_enabled,
+                              name,
+                              id,
+                              0, // bind_id
+                              num_args,
+                              arg_names,
+                              arg_types,
+                              arg_values,
+                              convertable_values,
+                              flags);
+    }
+
+    // TODO: echo to console.
+  }
+
+}
 
 
 DefaultPlatform::DefaultPlatform()
@@ -183,8 +350,47 @@ void DefaultPlatform::UpdateTraceEventDuration(
 
 
 const uint8_t* DefaultPlatform::GetCategoryGroupEnabled(const char* name) {
-  static uint8_t no = 0;
-  return &no;
+  printf("--$$-- category: %s\n", name);
+  DCHECK(!strchr(name, '"'));
+
+  // Search through the existing category list. category_groups is append only,
+  // so we can avoid acquiring the lock on the fast path.
+  size_t current_category_index = base::Acquire_Load(&g_category_index);
+  for (size_t i = 0; i < current_category_index; ++i) {
+    if (strcmp(g_category_groups[i], name) == 0) {
+      return &g_category_group_enabled[i];
+    }
+  }
+
+  // This is the slow path: the lock is not held in the case above, so more
+  // than one thread could have reached here trying to add the same category.
+  // Only hold to lock when actually appending a new category, and
+  // check the categories groups again.
+  // Add the new category group.
+  base::LockGuard<base::Mutex> lock_guard(g_category_group_mutex.Pointer());
+  current_category_index = base::Acquire_Load(&g_category_index);
+  for (size_t i = 0; i < current_category_index; ++i) {
+    if (strcmp(g_category_groups[i], name) == 0) {
+      return &g_category_group_enabled[i];
+    }
+  }
+
+  // Create a new category group.
+  DCHECK(current_category_index < MAX_CATEGORY_GROUPS);
+  if (current_category_index < MAX_CATEGORY_GROUPS) {
+    const char* new_group = strdup(name); // NOTE: this leaks.
+    g_category_groups[current_category_index] = new_group;
+    DCHECK(!g_category_group_enabled[current_category_index]);
+    // TODO: UpdateCategoryGroupEnabledFlag
+    uint8_t* category_group_enabled = &g_category_group_enabled[current_category_index];
+    /* hack */ *g_category_group_enabled = 1;
+    // Update the max index now.
+    base::Release_Store(&g_category_index, current_category_index + 1);
+    return category_group_enabled;
+  } else {
+    static uint8_t no = 0;
+    return &no;
+  }
 }
 
 
