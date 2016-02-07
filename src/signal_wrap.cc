@@ -64,6 +64,15 @@ class SignalWrap : public HandleWrap {
   static void Start(const FunctionCallbackInfo<Value>& args) {
     SignalWrap* wrap = Unwrap<SignalWrap>(args.Holder());
     int signum = args[0]->Int32Value();
+#if HAVE_INSPECTOR
+    if (signum == SIGPROF) {
+      Environment* env = Environment::GetCurrent(args);
+      if (env->inspector_agent()->IsStarted()) {
+        fprintf(stderr, "process.on(SIGPROF) is reserved while debugging\n");
+        return;
+      }
+    }
+#endif
     int err = uv_signal_start(&wrap->handle_, OnSignal, signum);
     args.GetReturnValue().Set(err);
   }
