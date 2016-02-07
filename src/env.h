@@ -3,6 +3,9 @@
 
 #include "ares.h"
 #include "debug-agent.h"
+#if HAVE_INSPECTOR
+#include "inspector_agent.h"
+#endif
 #include "handle_wrap.h"
 #include "req-wrap.h"
 #include "tree.h"
@@ -547,6 +550,12 @@ class Environment {
     return &debugger_agent_;
   }
 
+#if HAVE_INSPECTOR
+  inline inspector::Agent* inspector_agent() {
+    return &inspector_agent_;
+  }
+#endif
+
   typedef ListHead<HandleWrap, &HandleWrap::handle_wrap_queue_> HandleWrapQueue;
   typedef ListHead<ReqWrap<uv_req_t>, &ReqWrap<uv_req_t>::req_wrap_queue_>
           ReqWrapQueue;
@@ -584,6 +593,9 @@ class Environment {
   size_t makecallback_cntr_;
   int64_t async_wrap_uid_;
   debugger::Agent debugger_agent_;
+#if HAVE_INSPECTOR
+  inspector::Agent inspector_agent_;
+#endif
 
   HandleWrapQueue handle_wrap_queue_;
   ReqWrapQueue req_wrap_queue_;
