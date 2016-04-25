@@ -37,6 +37,7 @@
 #include "req-wrap.h"
 #include "req-wrap-inl.h"
 #include "string_bytes.h"
+#include "track-promise.h"
 #include "util.h"
 #include "uv.h"
 #include "libplatform/libplatform.h"
@@ -104,6 +105,7 @@ using v8::Array;
 using v8::ArrayBuffer;
 using v8::Boolean;
 using v8::Context;
+using v8::Debug;
 using v8::EscapableHandleScope;
 using v8::Exception;
 using v8::Function;
@@ -118,6 +120,7 @@ using v8::Locker;
 using v8::MaybeLocal;
 using v8::Message;
 using v8::Name;
+using v8::NativeWeakMap;
 using v8::Null;
 using v8::Number;
 using v8::Object;
@@ -127,6 +130,7 @@ using v8::PromiseRejectMessage;
 using v8::PropertyCallbackInfo;
 using v8::ScriptOrigin;
 using v8::SealHandleScope;
+using v8::Set;
 using v8::String;
 using v8::TryCatch;
 using v8::Uint32;
@@ -1136,14 +1140,77 @@ void PromiseRejectCallback(PromiseRejectMessage message) {
   callback->Call(process, arraysize(args), args);
 }
 
+Local<Value> GetPromiseReason(Environment* env, Local<Value> promise) {
+  Local<Function> fn = env->promise_unhandled_rejection();
+
+  Local<Value> internalProps =
+      Debug::GetInternalProperties(env->isolate(),
+                                   promise).ToLocalChecked().As<Value>();
+
+  // If fn is empty we'll almost certainly have to panic anyways
+  return fn->Call(env->context(), Null(env->isolate()), 1,
+                       &internalProps).ToLocalChecked();
+}
+
+void OnPromiseGC(const FunctionCallbackInfo<Value>& args) {
+  Environment* env = Environment::GetCurrent(args);
+
+  CHECK(args[0]->IsObject());
+  Local<Object> promise = args[0].As<Object>();
+
+  TrackPromise::New(env->isolate(), promise);
+
+  Local<Value> err = GetPromiseReason(env, promise);
+  Local<NativeWeakMap> unhandled_reject_map =
+      env->promise_unhandled_reject_map();
+  Local<Set> unhandled_reject_keys =
+      env->promise_unhandled_reject_keys();
+
+  if (unhandled_reject_keys->AsArray()->Length() > 1000) {
+    return;
+  }
+
+  if (!unhandled_reject_map->Has(err) && !err->IsUndefined()) {
+    unhandled_reject_map->Set(err, promise);
+    CHECK(!unhandled_reject_keys->Add(env->context(), err).IsEmpty());
+  }
+}
+
+void UntrackPromise(const FunctionCallbackInfo<Value>& args) {
+  Environment* env = Environment::GetCurrent(args);
+
+  CHECK(args[0]->IsObject());
+  Local<Value> promise = args[0].As<Value>();
+
+  Local<Value> err = GetPromiseReason(env, promise);
+  Local<NativeWeakMap> unhandled_reject_map =
+      env->promise_unhandled_reject_map();
+  Local<Set> unhandled_reject_keys =
+      env->promise_unhandled_reject_keys();
+
+  if (unhandled_reject_keys->Has(env->context(), err).IsJust()) {
+    CHECK(unhandled_reject_keys->Delete(env->context(), err).IsJust());
+    unhandled_reject_map->Delete(err);
+  }
+}
+
 void SetupPromises(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
   Isolate* isolate = env->isolate();
 
+  env->set_promise_unhandled_reject_map(NativeWeakMap::New(isolate));
+  env->set_promise_unhandled_reject_keys(Set::New(isolate));\
+
   CHECK(args[0]->IsFunction());
+  CHECK(args[1]->IsFunction());
+  CHECK(args[2]->IsObject());
 
   isolate->SetPromiseRejectCallback(PromiseRejectCallback);
   env->set_promise_reject_function(args[0].As<Function>());
+  env->set_promise_unhandled_rejection(args[1].As<Function>());
+
+  env->SetMethod(args[2].As<Object>(), "onPromiseGC", OnPromiseGC);
+  env->SetMethod(args[2].As<Object>(), "untrackPromise", UntrackPromise);
 
   env->process_object()->Delete(
       env->context(),
@@ -1572,10 +1639,17 @@ void AppendExceptionLine(Environment* env,
   PrintErrorString("\n%s", arrow);
 }
 
+void ReportPromiseRejection(Isolate* isolate, Local<Value> promise) {
+  Environment* env = Environment::GetCurrent(isolate);
 
-static void ReportException(Environment* env,
-                            Local<Value> er,
-                            Local<Message> message) {
+  Local<Value> err = GetPromiseReason(env, promise);
+
+  ReportException(env, err, Exception::CreateMessage(isolate, err));
+}
+
+void ReportException(Environment* env,
+                     Local<Value> er,
+                     Local<Message> message) {
   HandleScope scope(env->isolate());
 
   AppendExceptionLine(env, er, message);
@@ -3307,6 +3381,11 @@ void LoadEnvironment(Environment* env) {
   // Add a reference to the global object
   Local<Object> global = env->context()->Global();
 
+  Local<Object> JSArray = global->Get(env->array_class_string()).As<Object>();
+  Local<Function> JSFrom =
+      JSArray->Get(env->array_from_string()).As<Function>();
+  env->set_array_from(JSFrom);
+
 #if defined HAVE_DTRACE || defined HAVE_ETW
   InitDTrace(env, global);
 #endif
@@ -4320,6 +4399,26 @@ static void StartNodeInstance(void* arg) {
             more = true;
         }
       } while (more == true);
+    }
+
+    Local<Value> promise_keys_set =
+        env->promise_unhandled_reject_keys().As<Value>();
+    Local<Function> convert = env->array_from();
+    Local<Value> ret = convert->Call(env->context(),
+        Null(env->isolate()), 1, &promise_keys_set).ToLocalChecked();
+    Local<Array> promise_keys = ret.As<Array>();
+    uint32_t key_count = promise_keys->Length();
+    Local<NativeWeakMap> unhandled_reject_map =
+        env->promise_unhandled_reject_map();
+
+    for (uint32_t key_iter = 0; key_iter < key_count; key_iter++) {
+      Local<Value> key = promise_keys->Get(env->context(),
+                                           key_iter).ToLocalChecked();
+
+      if (unhandled_reject_map->Has(key)) {
+        ReportPromiseRejection(isolate, unhandled_reject_map->Get(key));
+        exit(1);
+      }
     }
 
     env->set_trace_sync_io(false);
