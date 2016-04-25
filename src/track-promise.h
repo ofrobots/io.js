@@ -9,21 +9,20 @@ class Environment;
 
 class TrackPromise {
  public:
-  TrackPromise(v8::Isolate* isolate, v8::Local<v8::Object> object);
-  virtual ~TrackPromise();
-
   static TrackPromise* New(v8::Isolate* isolate,
-                                  v8::Local<v8::Object> object);
-
-  inline v8::Persistent<v8::Object>* persistent();
+                           v8::Local<v8::Object> promise,
+                           v8::Local<v8::Value> reason);
 
   static inline void WeakCallback(
-      const v8::WeakCallbackData<v8::Object, TrackPromise>& data);
+      const v8::WeakCallbackInfo<TrackPromise>& data);
 
  private:
-  inline void WeakCallback(v8::Isolate* isolate, v8::Local<v8::Object> object);
+  TrackPromise(v8::Isolate* isolate, v8::Local<v8::Object> promise,
+               v8::Local<v8::Value> reason);
+  ~TrackPromise();
 
-  v8::Persistent<v8::Object> persistent_;
+  v8::Persistent<v8::Object> promise_;
+  v8::Persistent<v8::Value> reason_;
 };
 
 }  // namespace node

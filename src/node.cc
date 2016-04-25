@@ -1157,10 +1157,10 @@ void OnPromiseGC(const FunctionCallbackInfo<Value>& args) {
 
   CHECK(args[0]->IsObject());
   Local<Object> promise = args[0].As<Object>();
-
-  TrackPromise::New(env->isolate(), promise);
-
   Local<Value> err = GetPromiseReason(env, promise);
+
+  TrackPromise::New(env->isolate(), promise, err);
+
   Local<NativeWeakMap> unhandled_reject_map =
       env->promise_unhandled_reject_map();
   Local<Set> unhandled_reject_keys =
@@ -1639,12 +1639,10 @@ void AppendExceptionLine(Environment* env,
   PrintErrorString("\n%s", arrow);
 }
 
-void ReportPromiseRejection(Isolate* isolate, Local<Value> promise) {
+void ReportPromiseRejection(Isolate* isolate, Local<Value> reason) {
   Environment* env = Environment::GetCurrent(isolate);
 
-  Local<Value> err = GetPromiseReason(env, promise);
-
-  ReportException(env, err, Exception::CreateMessage(isolate, err));
+  ReportException(env, reason, Exception::CreateMessage(isolate, reason));
 }
 
 void ReportException(Environment* env,
@@ -4416,7 +4414,9 @@ static void StartNodeInstance(void* arg) {
                                            key_iter).ToLocalChecked();
 
       if (unhandled_reject_map->Has(key)) {
-        ReportPromiseRejection(isolate, unhandled_reject_map->Get(key));
+        Local<Value> err = GetPromiseReason(env,
+                                            unhandled_reject_map->Get(key));
+        ReportPromiseRejection(isolate, err);
         exit(1);
       }
     }

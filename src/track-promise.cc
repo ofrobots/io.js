@@ -5,51 +5,41 @@
 
 namespace node {
 
-using v8::Function;
 using v8::Isolate;
 using v8::Local;
 using v8::Object;
 using v8::Persistent;
 using v8::Value;
-using v8::WeakCallbackData;
-
-typedef void (*FreeCallback)(Local<Object> object, Local<Function> fn);
+using v8::WeakCallbackInfo;
 
 
 TrackPromise* TrackPromise::New(Isolate* isolate,
-                                Local<Object> object) {
-  return new TrackPromise(isolate, object);
-}
-
-
-Persistent<Object>* TrackPromise::persistent() {
-  return &persistent_;
+                                Local<Object> promise, Local<Value> reason) {
+  return new TrackPromise(isolate, promise, reason);
 }
 
 
 TrackPromise::TrackPromise(Isolate* isolate,
-                           Local<Object> object)
-    : persistent_(isolate, object) {
-  persistent_.SetWeak(this, WeakCallback);
-  persistent_.MarkIndependent();
+                           Local<Object> promise, Local<Value> reason)
+    : promise_(isolate, promise), reason_(isolate, reason) {
+  promise_.SetWeak(this, WeakCallback, v8::WeakCallbackType::kParameter);
+  promise_.MarkIndependent();
 }
 
 
 TrackPromise::~TrackPromise() {
-  persistent_.Reset();
+  promise_.Reset();
+  reason_.Reset();
 }
 
 
 void TrackPromise::WeakCallback(
-    const WeakCallbackData<Object, TrackPromise>& data) {
-  data.GetParameter()->WeakCallback(data.GetIsolate(), data.GetValue());
+    const WeakCallbackInfo<TrackPromise>& data) {
+  TrackPromise* self = data.GetParameter();
+  node::ReportPromiseRejection(data.GetIsolate(),
+    PersistentToLocal(data.GetIsolate(), self->reason_));
+  delete self;
 }
 
-
-void TrackPromise::WeakCallback(Isolate* isolate, Local<Object> object) {
-  node::ReportPromiseRejection(isolate, object.As<Value>());
-  exit(1);
-  delete this;
-}
 
 }  // namespace node
