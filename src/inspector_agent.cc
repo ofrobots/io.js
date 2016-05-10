@@ -1,14 +1,19 @@
 #include "inspector_agent.h"
 
+// Avoid conflicts between Blink and Node macros
+// TODO(eostroukhov): Remove once the Blink code switches to STL pointers
+#pragma push_macro("ASSERT")
+#pragma push_macro("NO_RETURN")
+#undef ASSERT
+#undef NO_RETURN
+
 #include "platform/v8_inspector/public/V8Inspector.h"
 #include "platform/inspector_protocol/FrontendChannel.h"
 #include "platform/inspector_protocol/String16.h"
 #include "platform/inspector_protocol/Values.h"
 
-// Avoid conflicts between Blink and Node macros
-// TODO(eostroukhov): Remove once the Blink code switches to STL pointers
-#undef ASSERT
-#undef NO_RETURN
+#pragma pop_macro("NO_RETURN")
+#pragma pop_macro("ASSERT")
 
 #include "env.h"
 #include "env-inl.h"
@@ -39,19 +44,14 @@ static const char DEVTOOLS_PATH[] = "/node";
 
 class DispatchOnInspectorBackendTask : public v8::Task {
  public:
-  DispatchOnInspectorBackendTask(Agent* agent, const char* message,
-                                 ssize_t len) :
-                                 agent_(agent),
-                                 message_(message, len) {}
+  DispatchOnInspectorBackendTask(Agent* agent) : agent_(agent) {}
 
   void Run() override {
-    agent_->inspector_->dispatchMessageFromFrontend(message_);
-    uv_async_send(&agent_->dataWritten_);
+    agent_->PostMessages();
   }
 
  private:
   Agent* agent_;
-  String16 message_;
 };
 
 class ChannelImpl final : public blink::protocol::FrontendChannel {
@@ -180,6 +180,15 @@ Agent::Agent(Environment* env) : port_(5858),
   CHECK_EQ(err, 0);
 }
 
+Agent::~Agent() {
+  uv_mutex_destroy(&queue_lock_);
+  uv_close(reinterpret_cast<uv_handle_t*>(&dataWritten_), nullptr);
+
+  while(MessageFromFrontend* message = message_queue_.PopFront()) {
+    delete message;
+  }
+}
+
 bool Agent::Start(v8::Platform* platform, int port, bool wait) {
   auto env = parent_env();
   inspector_ = new blink::V8Inspector(env->isolate(), env->context(), platform);
@@ -197,6 +206,10 @@ bool Agent::Start(v8::Platform* platform, int port, bool wait) {
   if (err != 0)
     goto async_init_failed;
 
+  err = uv_mutex_init(&queue_lock_);
+  if (err != 0)
+    goto mutex_init_failed;
+
   uv_unref(reinterpret_cast<uv_handle_t*>(&dataWritten_));
 
   port_ = port;
@@ -212,12 +225,12 @@ bool Agent::Start(v8::Platform* platform, int port, bool wait) {
   return true;
 
  thread_create_failed:
+  uv_mutex_destroy(&queue_lock_);
+ mutex_init_failed:
   uv_close(reinterpret_cast<uv_handle_t*>(&dataWritten_), nullptr);
-
  async_init_failed:
   err = uv_loop_close(&child_loop_);
   CHECK_EQ(err, 0);
-
  loop_init_failed:
   return false;
 }
@@ -234,15 +247,35 @@ void Agent::Stop() {
   delete inspector_;
 }
 
+void Agent::PostMessages() {
+  if (!uv_mutex_trylock(&queue_lock_)) {
+    while(MessageFromFrontend* message = message_queue_.PopFront()) {
+      inspector_->dispatchMessageFromFrontend(
+          String16(message->message(), message->length()));
+      delete message;
+    }
+    uv_async_send(&dataWritten_);
+    uv_mutex_unlock(&queue_lock_);
+  }
+}
+
+static void InterruptCallback(v8::Isolate*, void* agent) {
+  reinterpret_cast<Agent*>(agent)->PostMessages();
+}
+
 void Agent::OnRemoteData(uv_stream_t* stream, ssize_t read, const uv_buf_t* b) {
   inspector_socket_t* socket =
       reinterpret_cast<inspector_socket_t*>(stream->data);
   Agent* agent = reinterpret_cast<Agent*>(socket->data);
   if (read > 0) {
+    uv_mutex_lock(&agent->queue_lock_);
+    agent->message_queue_.PushFront(new MessageFromFrontend(b->base, read - 1));
     agent->platform_->CallOnForegroundThread(agent->parent_env()->isolate(),
-        new DispatchOnInspectorBackendTask(agent, b->base, read - 1));
+        new DispatchOnInspectorBackendTask(agent));
+    agent->parent_env()->isolate()
+        ->RequestInterrupt(InterruptCallback, agent);
     uv_async_send(&agent->dataWritten_);
-    free(b->base);
+    uv_mutex_unlock(&agent->queue_lock_);
   } else if (read < 0) {
     if (agent->client_socket_ == socket) {
       agent->client_socket_ = nullptr;
