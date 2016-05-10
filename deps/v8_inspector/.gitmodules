@@ -1,0 +1,10 @@
+[submodule "deps/wtf"]
+	path = deps/wtf
+	url = https://github.com/repenaxa/wtf
+	branch = v8_inspector
+[submodule "deps/markupsafe"]
+	path = deps/markupsafe
+	url = https://github.com/mitsuhiko/markupsafe
+[submodule "deps/jinja2"]
+	path = deps/jinja2
+	url = https://github.com/mitsuhiko/jinja2
