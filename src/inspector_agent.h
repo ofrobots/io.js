@@ -8,6 +8,7 @@
 #include "inspector_socket.h"
 #include "uv.h"
 #include "v8.h"
+#include "util.h"
 
 namespace blink {
 class V8Inspector;
@@ -25,17 +26,36 @@ namespace node {
 namespace inspector {
 
 class ChannelImpl;
-class DispatchOnInspectorBackendTask;
+
+class MessageFromFrontend {
+public:
+  MessageFromFrontend(char* message, size_t length) : message_(message),
+                                                          length_(length) {
+  }
+  ~MessageFromFrontend() {
+    free(message_);
+    message_ = nullptr;
+  }
+  const char* message() { return message_; }
+  size_t length() { return length_; }
+
+  ListNode<MessageFromFrontend> listNode;
+private:
+  char* message_;
+  const size_t length_;
+};
 
 class Agent {
  public:
   explicit Agent(node::Environment* env);
-  ~Agent() {}
+  ~Agent();
 
   // Start the inspector agent thread
   bool Start(v8::Platform* platform, int port, bool wait);
   // Stop the inspector agent
   void Stop();
+
+  void PostMessages();
 
   inspector_socket_t* client_socket() {  return client_socket_; }
  protected:
@@ -49,6 +69,8 @@ class Agent {
   static void ParentSignalCb(uv_async_t* signal);
 
   uv_sem_t start_sem_;
+  uv_mutex_t queue_lock_;
+  ListHead<MessageFromFrontend, &MessageFromFrontend::listNode> message_queue_;
 
   int port_;
   bool wait_;
@@ -78,10 +100,8 @@ class Agent {
   bool AcceptsConnection(inspector_socket_t* socket, const char* path);
   void OnInspectorConnection(inspector_socket_t* socket);
   void write(const blink::protocol::String16& message);
-  void AttachToV8(v8::Platform* platform);
 
   friend class ChannelImpl;
-  friend class DispatchOnInspectorBackendTask;
 };
 
 }  // namespace inspector
