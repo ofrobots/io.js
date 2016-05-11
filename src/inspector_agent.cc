@@ -269,7 +269,7 @@ void Agent::OnRemoteData(uv_stream_t* stream, ssize_t read, const uv_buf_t* b) {
   Agent* agent = reinterpret_cast<Agent*>(socket->data);
   if (read > 0) {
     uv_mutex_lock(&agent->queue_lock_);
-    agent->message_queue_.PushFront(new MessageFromFrontend(b->base, read - 1));
+    agent->message_queue_.PushBack(new MessageFromFrontend(b->base, read - 1));
     agent->platform_->CallOnForegroundThread(agent->parent_env()->isolate(),
         new DispatchOnInspectorBackendTask(agent));
     agent->parent_env()->isolate()
