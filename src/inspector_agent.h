@@ -37,7 +37,8 @@ class Agent {
   // Stop the inspector agent
   void Stop();
 
-  inspector_socket_t* client_socket() {  return client_socket_; }
+  bool connected() {  return connected_; }
+
  protected:
   inline node::Environment* parent_env() {  return parent_env_; }
   void InitAdaptor(Environment* env);
@@ -52,6 +53,7 @@ class Agent {
 
   int port_;
   bool wait_;
+  bool connected_;
 
   uv_thread_t thread_;
   node::Environment* parent_env_;
@@ -82,6 +84,8 @@ class Agent {
 
   friend class ChannelImpl;
   friend class DispatchOnInspectorBackendTask;
+  friend class SetConnectedTask;
+  friend class AsyncWriteRequest;
 };
 
 }  // namespace inspector

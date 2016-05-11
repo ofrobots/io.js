@@ -4430,8 +4430,17 @@ static void StartNodeInstance(void* arg) {
           if (uv_run(env->event_loop(), UV_RUN_NOWAIT) != 0)
             more = true;
         }
+
       } while (more == true);
     }
+
+#if HAVE_INSPECTOR
+    if (env->inspector_agent()->connected())
+      fprintf(stderr, "Waiting for the debugger to disconnect...\n");
+    while (env->inspector_agent()->connected()) {
+      v8::platform::PumpMessageLoop(default_platform, isolate);
+    }
+#endif
 
     env->set_trace_sync_io(false);
 

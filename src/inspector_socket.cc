@@ -288,6 +288,7 @@ static ws_decode_result decode_frame_hybi17(const char* buffer_begin,
 
   size_t pos = p + actual_masking_key_length + payload_length - buffer_begin;
   *bytes_consumed = pos;
+
   return closed ? FRAME_CLOSE : FRAME_OK;
 }
 
@@ -319,6 +320,7 @@ static void on_close_frame_written(uv_write_t* write, int status) {
 static void close_frame_received(inspector_socket_t* inspector) {
   inspector->ws_state->received_close = true;
   if (!inspector->ws_state->close_sent) {
+    invoke_read_callback(inspector, 0, 0);
     write_to_client(inspector, CLOSE_FRAME, sizeof(CLOSE_FRAME),
                     on_close_frame_written);
   } else {
@@ -422,6 +424,7 @@ int inspector_read_start(inspector_socket_t* inspector,
   ASSERT(!inspector->shutting_down || read_cb == nullptr);
   inspector->ws_state->close_sent = false;
   inspector->ws_state->alloc_cb = alloc_cb;
+  inspector->ws_state->read_cb = read_cb;
   inspector->ws_state->read_cb = read_cb;
   int err =
       uv_read_start(reinterpret_cast<uv_stream_t*>(&inspector->client),
