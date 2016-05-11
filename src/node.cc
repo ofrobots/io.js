@@ -3406,7 +3406,7 @@ static bool ParseDebugOpt(const char* arg) {
 #if HAVE_INSPECTOR
   // Specifying both --inspect and --debug means debugging is on, using Chromium
   // inspector.
-  } else if (!strncmp(arg, "--inspect", sizeof("--inspect") - 1)) {
+  } else if (!strcmp(arg, "--inspect")) {
     use_debug_agent = true;
     use_inspector = true;
   } else if (!strncmp(arg, "--inspect=", sizeof("--inspect=") - 1)) {
