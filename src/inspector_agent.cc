@@ -102,6 +102,9 @@ class SetConnectedTask : public v8::Task {
 
   void Run() override {
     agent_->connected_ = connected_;
+    if (!connected_) {
+      agent_->inspector_->quitMessageLoopOnPause();
+    }
   }
 
  private:
