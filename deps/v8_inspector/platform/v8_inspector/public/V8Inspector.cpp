@@ -15,16 +15,10 @@
 
 #include "platform/inspector_protocol/Dispatcher.h"
 
-#include "libplatform/libplatform.h"
-
 namespace blink {
 
 
-V8Inspector::V8Inspector(v8::Isolate* isolate, v8::Local<v8::Context> context, v8::Platform* platform)
-    : m_isolate(isolate)
-    , m_platform(platform)
-    , m_context(isolate, context)
-    , m_terminated(false)
+V8Inspector::V8Inspector(v8::Isolate* isolate, v8::Local<v8::Context> context)
 {
     m_debugger = V8Debugger::create(isolate, this);
     m_session = m_debugger->connect(1);
@@ -45,19 +39,6 @@ V8Inspector::V8Inspector(v8::Isolate* isolate, v8::Local<v8::Context> context, v
 V8Inspector::~V8Inspector()
 {
     disconnectFrontend();
-}
-
-void V8Inspector::runMessageLoopOnPause(int contextGroupId)
-{
-    while (!m_terminated) {
-      v8::platform::PumpMessageLoop(m_platform, m_isolate);
-    }
-    m_terminated = false;
-}
-
-void V8Inspector::quitMessageLoopOnPause()
-{
-    m_terminated = true;
 }
 
 void V8Inspector::eventListeners(v8::Local<v8::Value> value, V8EventListenerInfoList& result)
