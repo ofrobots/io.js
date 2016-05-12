@@ -184,7 +184,7 @@ static void SendTargentsListResponse(inspector_socket_t* socket) {
   SendHttpResponse(socket, buffer, len);
 }
 
-Agent::Agent(Environment* env) : port_(5858),
+Agent::Agent(Environment* env) : port_(9229),
                                  wait_(false),
                                  connected_(false),
                                  parent_env_(env),
