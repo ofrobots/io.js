@@ -10,6 +10,8 @@
 #include "v8.h"
 #include "util.h"
 
+#include <vector>
+
 namespace blink {
 class V8Inspector;
 namespace protocol {
@@ -26,24 +28,6 @@ namespace node {
 namespace inspector {
 
 class ChannelImpl;
-
-class MessageFromFrontend {
-public:
-  MessageFromFrontend(char* message, size_t length) : message_(message),
-                                                          length_(length) {
-  }
-  ~MessageFromFrontend() {
-    free(message_);
-    message_ = nullptr;
-  }
-  const char* message() { return message_; }
-  size_t length() { return length_; }
-
-  ListNode<MessageFromFrontend> listNode;
-private:
-  char* message_;
-  const size_t length_;
-};
 
 class Agent {
  public:
@@ -71,7 +55,7 @@ class Agent {
 
   uv_sem_t start_sem_;
   uv_mutex_t queue_lock_;
-  ListHead<MessageFromFrontend, &MessageFromFrontend::listNode> message_queue_;
+  std::vector<blink::protocol::String16> message_queue_;
 
   int port_;
   bool wait_;
@@ -101,11 +85,12 @@ class Agent {
   bool RespondToGet(inspector_socket_t* socket, const char* path);
   bool AcceptsConnection(inspector_socket_t* socket, const char* path);
   void OnInspectorConnection(inspector_socket_t* socket);
-  void write(const blink::protocol::String16& message);
+  void Write(const blink::protocol::String16& message);
 
   friend class AsyncWriteRequest;
   friend class ChannelImpl;
   friend class SetConnectedTask;
+  friend class V8NodeInspector;
 };
 
 }  // namespace inspector
