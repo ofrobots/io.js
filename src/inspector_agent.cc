@@ -438,7 +438,7 @@ void Agent::WorkerRun() {
     fprintf(stderr, "Debugger listening on port %d. "
         "To start debugging, open following URL in Chrome:\n\n"
         "chrome-devtools://devtools/remote/serve_file/"
-        "@4604d24a75168768584760ba56d175507941852f/inspector.html?"
+        "@521e5b7e2b7cc66b4006a8a54cb9c4e57494a5ef/inspector.html?"
         "experiments=true&v8only=true&ws=localhost:%d/node\n\n", port_, port_);
   } else {
     fprintf(stderr, "Unable to open devtools socket: %s\n", uv_strerror(err));
