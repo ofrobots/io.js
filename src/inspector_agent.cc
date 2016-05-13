@@ -312,6 +312,13 @@ void Agent::Start(v8::Platform* platform, int port, bool wait) {
                          this);
   CHECK_EQ(err, 0);
   uv_sem_wait(&start_sem_);
+
+  if (wait) {
+    // Flush messages in case of wait to connect, see OnRemoteDataIO on how it
+    // should be fixed.
+    SetConnected(true);
+    PostMessages();
+  }
 }
 
 void Agent::Stop() {
@@ -379,10 +386,21 @@ void Agent::OnRemoteDataIO(uv_stream_t* stream,
   Agent* agent = reinterpret_cast<Agent*>(socket->data);
   if (read > 0) {
     uv_mutex_lock(&agent->queue_lock_);
-    agent->message_queue_.push_back(
-        blink::protocol::String16(b->base, read - 1));
+    blink::protocol::String16 str(b->base, read - 1);
+    agent->message_queue_.push_back(str);
     uv_mutex_unlock(&agent->queue_lock_);
     free(b->base);
+
+    // TODO(pfeldman): Instead of blocking execution while debugger
+    // engages, node should wait for the run callback from the remote client
+    // and initiate its startup. This is a change to node.cc that should be
+    // upstreamed separately.
+    if (agent->wait_ &&
+        str.find(blink::protocol::String16("\"Runtime.run\"")) !=
+            std::string::npos) {
+      agent->wait_ = false;
+      uv_sem_post(&agent->start_sem_);
+    }
 
     agent->platform_->CallOnForegroundThread(agent->parent_env_->isolate(),
         new DispatchOnInspectorBackendTask(agent));
@@ -446,7 +464,6 @@ void Agent::OnInspectorConnectionIO(inspector_socket_t* socket) {
   }
   client_socket_ = socket;
   inspector_read_start(socket, OnBufferAlloc, Agent::OnRemoteDataIO);
-  uv_sem_post(&start_sem_);
   platform_->CallOnForegroundThread(parent_env_->isolate(),
       new SetConnectedTask(this, true));
 }
@@ -460,9 +477,8 @@ void Agent::PostMessages() {
   messages.swap(message_queue_);
   uv_mutex_unlock(&queue_lock_);
 
-  for (auto const& message : messages) {
+  for (auto const& message : messages)
     inspector_->dispatchMessageFromFrontend(message);
-  }
   uv_async_send(&data_written_);
   dispatching_messages_ = false;
 }
@@ -473,12 +489,12 @@ void Agent::SetConnected(bool connected) {
 
   connected_ = connected;
   if (connected) {
-      fprintf(stderr, "Debugger attached.\n");
-      inspector_->connectFrontend(new ChannelImpl(this));
+    fprintf(stderr, "Debugger attached.\n");
+    inspector_->connectFrontend(new ChannelImpl(this));
   } else {
-      PrintDebuggerReadyMessage(port_);
-      inspector_->quitMessageLoopOnPause();
-      inspector_->disconnectFrontend();
+    PrintDebuggerReadyMessage(port_);
+    inspector_->quitMessageLoopOnPause();
+    inspector_->disconnectFrontend();
   }
 }
 
