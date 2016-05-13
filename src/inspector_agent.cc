@@ -243,7 +243,7 @@ class V8NodeInspector : public blink::V8Inspector {
       uv_mutex_lock(&agent_->pause_lock_);
       uv_cond_wait(&agent_->pause_cond_, &agent_->pause_lock_);
       uv_mutex_unlock(&agent_->pause_lock_);
-      v8::platform::PumpMessageLoop(platform_, isolate_);
+      while(v8::platform::PumpMessageLoop(platform_, isolate_));
     } while (!terminated_);
     terminated_ = false;
     running_nested_loop_ = false;
