@@ -35,6 +35,118 @@
 #include <unistd.h>  // setuid, getuid
 #endif
 
+namespace {
+
+const char DEVTOOLS_PATH[] = "/node";
+
+void PrintDebuggerReadyMessage(int port) {
+  fprintf(stderr, "Debugger listening on port %d. "
+    "To start debugging, open following URL in Chrome:\n"
+    "    chrome-devtools://devtools/remote/serve_file/"
+    "@521e5b7e2b7cc66b4006a8a54cb9c4e57494a5ef/inspector.html?"
+    "experiments=true&v8only=true&ws=localhost:%d/node\n", port, port);
+}
+
+bool AcceptsConnection(inspector_socket_t* socket, const char* path) {
+  return strncmp(DEVTOOLS_PATH, path, sizeof(DEVTOOLS_PATH)) == 0;
+}
+
+void DisposeAsyncCb(uv_handle_t* handle) {
+  free(handle);
+}
+
+void DisposeInspector(inspector_socket_t* socket, int status) {
+  free(socket);
+}
+
+void DisconnectAndDisposeIO(inspector_socket_t* socket) {
+  if (socket) {
+    inspector_close(socket, DisposeInspector);
+  }
+}
+
+void OnBufferAlloc(uv_handle_t* handle, size_t len, uv_buf_t* buf) {
+  if (len > 0) {
+    buf->base = reinterpret_cast<char*>(malloc(len));
+    CHECK_NE(buf->base, nullptr);
+  }
+  buf->len = len;
+}
+
+void SendHttpResponse(inspector_socket_t* socket,
+                        const char* response,
+                        size_t len) {
+  const char HEADERS[] = "HTTP/1.0 200 OK\r\n"
+                         "Content-Type: application/json; charset=UTF-8\r\n"
+                         "Cache-Control: no-cache\r\n"
+                         "Content-Length: %ld\r\n"
+                         "\r\n";
+  char header[sizeof(HEADERS) + 20];
+  int header_len = snprintf(header, sizeof(header), HEADERS, len);
+  inspector_write(socket, header, header_len);
+  inspector_write(socket, response, len);
+}
+
+void SendVersionResponse(inspector_socket_t* socket) {
+  const char VERSION_RESPONSE_TEMPLATE[] =
+      "[ {"
+      "  \"Browser\": \"node.js/%s\","
+      "  \"Protocol-Version\": \"1.1\","
+      "  \"User-Agent\": \"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
+            "(KHTML, like Gecko) Chrome/45.0.2446.0 Safari/537.36\","
+      "  \"WebKit-Version\": \"537.36 (@198122)\""
+      "} ]";
+  char buffer[sizeof(VERSION_RESPONSE_TEMPLATE) + 128];
+  size_t len = snprintf(buffer, sizeof(buffer),
+                 VERSION_RESPONSE_TEMPLATE, NODE_VERSION);
+  ASSERT(len < sizeof(buffer));
+  SendHttpResponse(socket, buffer, len);
+}
+
+void SendTargentsListResponse(inspector_socket_t* socket) {
+  const char LIST_RESPONSE_TEMPLATE[] =
+      "[ {"
+      "  \"description\": \"node.js instance\","
+      "  \"devtoolsFrontendUrl\": "
+            "\"https://chrome-devtools-frontend.appspot.com/serve_file/"
+            "@4604d24a75168768584760ba56d175507941852f/inspector.html\","
+      "  \"faviconUrl\": \"https://nodejs.org/static/favicon.ico\","
+      "  \"id\": \"%d\","
+      "  \"title\": \"%s\","
+      "  \"type\": \"node\","
+      "  \"webSocketDebuggerUrl\": \"ws://%s\""
+      "} ]";
+  char buffer[sizeof(LIST_RESPONSE_TEMPLATE) + 4096];
+  char title[2048];  // uv_get_process_title trims the title if too long
+  int err = uv_get_process_title(title, sizeof(title));
+  ASSERT_EQ(0, err);
+  size_t len = snprintf(buffer, sizeof(buffer), LIST_RESPONSE_TEMPLATE,
+                        getpid(), title, DEVTOOLS_PATH);
+  ASSERT(len < sizeof(buffer));
+  SendHttpResponse(socket, buffer, len);
+}
+
+bool RespondToGet(inspector_socket_t* socket, const char* path) {
+  const char PATH[] = "/json";
+  const char PATH_LIST[] = "/json/list";
+  const char PATH_VERSION[] = "/json/version";
+  const char PATH_ACTIVATE[] = "/json/activate/";
+  if (!strncmp(PATH_VERSION, path, sizeof(PATH_VERSION))) {
+    SendVersionResponse(socket);
+  } else if (!strncmp(PATH_LIST, path, sizeof(PATH_LIST))
+             || !strncmp(PATH, path, sizeof(PATH)))  {
+    SendTargentsListResponse(socket);
+  } else if (!strncmp(path, PATH_ACTIVATE, sizeof(PATH_ACTIVATE) - 1) &&
+             atoi(path + (sizeof(PATH_ACTIVATE) - 1)) == getpid()) {
+    const char TARGET_ACTIVATED[] = "Target activated";
+    SendHttpResponse(socket, TARGET_ACTIVATED, sizeof(TARGET_ACTIVATED) - 1);
+  } else {
+    return false;
+  }
+  return true;
+}
+
+}  // namespace
 
 namespace node {
 namespace inspector {
@@ -42,7 +154,9 @@ namespace inspector {
 using blink::protocol::DictionaryValue;
 using blink::protocol::String16;
 
-static const char DEVTOOLS_PATH[] = "/node";
+void InterruptCallback(v8::Isolate*, void* agent) {
+  reinterpret_cast<Agent*>(agent)->PostMessages();
+}
 
 class DispatchOnInspectorBackendTask : public v8::Task {
  public:
@@ -103,10 +217,7 @@ class SetConnectedTask : public v8::Task {
        connected_(connected) {}
 
   void Run() override {
-    agent_->connected_ = connected_;
-    if (!connected_) {
-      agent_->inspector_->quitMessageLoopOnPause();
-    }
+    agent_->SetConnected(connected_);
   }
 
  private:
@@ -150,81 +261,6 @@ class V8NodeInspector : public blink::V8Inspector {
   bool running_nested_loop_;
 };
 
-static void DisposeAsyncCb(uv_handle_t* handle) {
-  free(handle);
-}
-
-static void DisposeInspector(inspector_socket_t* socket, int status) {
-  free(socket);
-}
-
-static void DisconnectAndDispose(inspector_socket_t* socket) {
-  if (socket) {
-    inspector_close(socket, DisposeInspector);
-  }
-}
-
-static void OnBufferAlloc(uv_handle_t* handle, size_t len, uv_buf_t* buf) {
-  if (len > 0) {
-    buf->base = reinterpret_cast<char*>(malloc(len));
-    CHECK_NE(buf->base, nullptr);
-  }
-  buf->len = len;
-}
-
-static void SendHttpResponse(inspector_socket_t* socket,
-                        const char* response,
-                        size_t len) {
-  const char HEADERS[] = "HTTP/1.0 200 OK\r\n"
-                         "Content-Type: application/json; charset=UTF-8\r\n"
-                         "Cache-Control: no-cache\r\n"
-                         "Content-Length: %ld\r\n"
-                         "\r\n";
-  char header[sizeof(HEADERS) + 20];
-  int header_len = snprintf(header, sizeof(header), HEADERS, len);
-  inspector_write(socket, header, header_len);
-  inspector_write(socket, response, len);
-}
-
-static void SendVersionResponse(inspector_socket_t* socket) {
-  const char VERSION_RESPONSE_TEMPLATE[] =
-      "[ {"
-      "  \"Browser\": \"node.js/%s\","
-      "  \"Protocol-Version\": \"1.1\","
-      "  \"User-Agent\": \"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
-            "(KHTML, like Gecko) Chrome/45.0.2446.0 Safari/537.36\","
-      "  \"WebKit-Version\": \"537.36 (@198122)\""
-      "} ]";
-  char buffer[sizeof(VERSION_RESPONSE_TEMPLATE) + 128];
-  size_t len = snprintf(buffer, sizeof(buffer),
-                 VERSION_RESPONSE_TEMPLATE, NODE_VERSION);
-  ASSERT(len < sizeof(buffer));
-  SendHttpResponse(socket, buffer, len);
-}
-
-static void SendTargentsListResponse(inspector_socket_t* socket) {
-  const char LIST_RESPONSE_TEMPLATE[] =
-      "[ {"
-      "  \"description\": \"node.js instance\","
-      "  \"devtoolsFrontendUrl\": "
-            "\"https://chrome-devtools-frontend.appspot.com/serve_file/"
-            "@4604d24a75168768584760ba56d175507941852f/inspector.html\","
-      "  \"faviconUrl\": \"https://nodejs.org/static/favicon.ico\","
-      "  \"id\": \"%d\","
-      "  \"title\": \"%s\","
-      "  \"type\": \"node\","
-      "  \"webSocketDebuggerUrl\": \"ws://%s\""
-      "} ]";
-  char buffer[sizeof(LIST_RESPONSE_TEMPLATE) + 4096];
-  char title[2048];  // uv_get_process_title trims the title if too long
-  int err = uv_get_process_title(title, sizeof(title));
-  ASSERT_EQ(0, err);
-  size_t len = snprintf(buffer, sizeof(buffer), LIST_RESPONSE_TEMPLATE,
-                        getpid(), title, DEVTOOLS_PATH);
-  ASSERT(len < sizeof(buffer));
-  SendHttpResponse(socket, buffer, len);
-}
-
 Agent::Agent(Environment* env) : port_(9229),
                                  wait_(false),
                                  connected_(false),
@@ -244,13 +280,12 @@ Agent::~Agent() {
   uv_mutex_destroy(&queue_lock_);
   uv_mutex_destroy(&pause_lock_);
   uv_cond_init(&pause_cond_);
-  uv_close(reinterpret_cast<uv_handle_t*>(&dataWritten_), nullptr);
+  uv_close(reinterpret_cast<uv_handle_t*>(&data_written_), nullptr);
 }
 
 void Agent::Start(v8::Platform* platform, int port, bool wait) {
-  auto env = parent_env();
+  auto env = parent_env_;
   inspector_ = new V8NodeInspector(this, env, platform);
-  inspector_->connectFrontend(new ChannelImpl(this));
 
   int err;
 
@@ -258,7 +293,7 @@ void Agent::Start(v8::Platform* platform, int port, bool wait) {
 
   err = uv_loop_init(&child_loop_);
   CHECK_EQ(err, 0);
-  err = uv_async_init(env->event_loop(), &dataWritten_, nullptr);
+  err = uv_async_init(env->event_loop(), &data_written_, nullptr);
   CHECK_EQ(err, 0);
   err = uv_mutex_init(&queue_lock_);
   CHECK_EQ(err, 0);
@@ -267,20 +302,21 @@ void Agent::Start(v8::Platform* platform, int port, bool wait) {
   err = uv_cond_init(&pause_cond_);
   CHECK_EQ(err, 0);
 
-  uv_unref(reinterpret_cast<uv_handle_t*>(&dataWritten_));
+  uv_unref(reinterpret_cast<uv_handle_t*>(&data_written_));
 
   port_ = port;
   wait_ = wait;
 
   err = uv_thread_create(&thread_,
-                         reinterpret_cast<uv_thread_cb>(ThreadCb),
+                         reinterpret_cast<uv_thread_cb>(Agent::ThreadCbIO),
                          this);
   CHECK_EQ(err, 0);
   uv_sem_wait(&start_sem_);
 }
 
 void Agent::Stop() {
-  DisconnectAndDispose(client_socket_);
+  // TODO(repenaxa): hop on the right thread.
+  DisconnectAndDisposeIO(client_socket_);
   int err = uv_thread_join(&thread_);
   CHECK_EQ(err, 0);
 
@@ -289,6 +325,130 @@ void Agent::Stop() {
   err = uv_loop_close(&child_loop_);
   CHECK_EQ(err, 0);
   delete inspector_;
+}
+
+bool Agent::IsStarted() {
+  return !!platform_;
+}
+
+// static
+void Agent::ThreadCbIO(Agent* agent) {
+  agent->WorkerRunIO();
+}
+
+// static
+void Agent::OnSocketConnectionIO(uv_stream_t* server, int status) {
+  if (status == 0) {
+    inspector_socket_t* socket = reinterpret_cast<inspector_socket_t*>(
+        malloc(sizeof(inspector_socket_t)));
+    ASSERT_NE(nullptr, socket);
+    memset(socket, 0, sizeof(inspector_socket_t));
+    socket->data = server->data;
+    if (inspector_accept(server, socket, Agent::OnInspectorHandshakeIO) != 0) {
+      free(socket);
+    }
+  }
+}
+
+// static
+bool Agent::OnInspectorHandshakeIO(inspector_socket_t* socket,
+                                 enum inspector_handshake_event state,
+                                 const char* path) {
+  Agent* agent = reinterpret_cast<Agent*>(socket->data);
+  switch (state) {
+  case kInspectorHandshakeHttpGet:
+    return RespondToGet(socket, path);
+  case kInspectorHandshakeUpgrading:
+    return AcceptsConnection(socket, path);
+  case kInspectorHandshakeUpgraded:
+    agent->OnInspectorConnectionIO(socket);
+    return true;
+  case kInspectorHandshakeFailed:
+    return false;
+  default:
+    ASSERT(false);
+  }
+}
+
+// static
+void Agent::OnRemoteDataIO(uv_stream_t* stream,
+                           ssize_t read,
+                           const uv_buf_t* b) {
+  inspector_socket_t* socket =
+      reinterpret_cast<inspector_socket_t*>(stream->data);
+  Agent* agent = reinterpret_cast<Agent*>(socket->data);
+  if (read > 0) {
+    uv_mutex_lock(&agent->queue_lock_);
+    agent->message_queue_.push_back(
+        blink::protocol::String16(b->base, read - 1));
+    uv_mutex_unlock(&agent->queue_lock_);
+    free(b->base);
+
+    agent->platform_->CallOnForegroundThread(agent->parent_env_->isolate(),
+        new DispatchOnInspectorBackendTask(agent));
+    agent->parent_env_->isolate()
+        ->RequestInterrupt(InterruptCallback, agent);
+    uv_async_send(&agent->data_written_);
+    uv_cond_broadcast(&agent->pause_cond_);
+  } else if (read < 0) {
+    if (agent->client_socket_ == socket) {
+      agent->client_socket_ = nullptr;
+    }
+    DisconnectAndDisposeIO(socket);
+  } else {
+    // EOF
+    if (agent->client_socket_ == socket) {
+      agent->client_socket_ = nullptr;
+      agent->platform_->CallOnForegroundThread(agent->parent_env_->isolate(),
+          new SetConnectedTask(agent, false));
+      uv_async_send(&agent->data_written_);
+    }
+  }
+}
+
+// static
+void Agent::WriteCbIO(uv_async_t* async) {
+  auto req = reinterpret_cast<AsyncWriteRequest*>(async->data);
+  req->perform();
+  delete req;
+  uv_close(reinterpret_cast<uv_handle_t*>(async), DisposeAsyncCb);
+}
+
+void Agent::WorkerRunIO() {
+  int err;
+  sockaddr_in addr;
+  uv_tcp_t server;
+  uv_tcp_init(&child_loop_, &server);
+  uv_ip4_addr("0.0.0.0", port_, &addr);
+  server.data = this;
+  err = uv_tcp_bind(&server, (const struct sockaddr*)&addr, 0);
+  if (err == 0) {
+    err = uv_listen(reinterpret_cast<uv_stream_t*>(&server), 0,
+                    OnSocketConnectionIO);
+  }
+  if (err == 0) {
+    PrintDebuggerReadyMessage(port_);
+  } else {
+    fprintf(stderr, "Unable to open devtools socket: %s\n", uv_strerror(err));
+    assert(false);
+  }
+  if (!wait_) {
+    uv_sem_post(&start_sem_);
+  }
+  uv_run(&child_loop_, UV_RUN_DEFAULT);
+  uv_close(reinterpret_cast<uv_handle_t*>(&server), nullptr);
+  uv_run(&child_loop_, UV_RUN_NOWAIT);
+}
+
+void Agent::OnInspectorConnectionIO(inspector_socket_t* socket) {
+  if (client_socket_) {
+    return;
+  }
+  client_socket_ = socket;
+  inspector_read_start(socket, OnBufferAlloc, Agent::OnRemoteDataIO);
+  uv_sem_post(&start_sem_);
+  platform_->CallOnForegroundThread(parent_env_->isolate(),
+      new SetConnectedTask(this, true));
 }
 
 void Agent::PostMessages() {
@@ -303,161 +463,32 @@ void Agent::PostMessages() {
   for (auto const& message : messages) {
     inspector_->dispatchMessageFromFrontend(message);
   }
-  uv_async_send(&dataWritten_);
+  uv_async_send(&data_written_);
   dispatching_messages_ = false;
 }
 
-bool Agent::IsStarted() {
-  return !!platform_;
-}
+void Agent::SetConnected(bool connected) {
+  if (connected_ == connected)
+    return;
 
-static void InterruptCallback(v8::Isolate*, void* agent) {
-  reinterpret_cast<Agent*>(agent)->PostMessages();
-}
-
-void Agent::OnRemoteData(uv_stream_t* stream, ssize_t read, const uv_buf_t* b) {
-  inspector_socket_t* socket =
-      reinterpret_cast<inspector_socket_t*>(stream->data);
-  Agent* agent = reinterpret_cast<Agent*>(socket->data);
-  if (read > 0) {
-    uv_mutex_lock(&agent->queue_lock_);
-    agent->message_queue_.push_back(
-        blink::protocol::String16(b->base, read - 1));
-    uv_mutex_unlock(&agent->queue_lock_);
-    free(b->base);
-
-    agent->platform_->CallOnForegroundThread(agent->parent_env()->isolate(),
-        new DispatchOnInspectorBackendTask(agent));
-    agent->parent_env()->isolate()
-        ->RequestInterrupt(InterruptCallback, agent);
-    uv_async_send(&agent->dataWritten_);
-    uv_cond_broadcast(&agent->pause_cond_);
-  } else if (read < 0) {
-    if (agent->client_socket_ == socket) {
-      agent->client_socket_ = nullptr;
-    }
-    DisconnectAndDispose(socket);
+  connected_ = connected;
+  if (connected) {
+      fprintf(stderr, "Debugger attached.\n");
+      inspector_->connectFrontend(new ChannelImpl(this));
   } else {
-    // EOF
-    agent->platform_->CallOnForegroundThread(agent->parent_env()->isolate(),
-        new SetConnectedTask(agent, false));
+      PrintDebuggerReadyMessage(port_);
+      inspector_->quitMessageLoopOnPause();
+      inspector_->disconnectFrontend();
   }
-}
-
-void Agent::WriteCb(uv_async_t* async) {
-  auto req = reinterpret_cast<AsyncWriteRequest*>(async->data);
-  req->perform();
-  delete req;
-  uv_close(reinterpret_cast<uv_handle_t*>(async), DisposeAsyncCb);
 }
 
 void Agent::Write(const String16& message) {
   uv_async_t* async = reinterpret_cast<uv_async_t*>(malloc(sizeof(uv_async_t)));
   ASSERT_NE(async, nullptr);
-  uv_async_init(&child_loop_, async, WriteCb);
+  uv_async_init(&child_loop_, async, Agent::WriteCbIO);
   async->data = new AsyncWriteRequest(this, message);
   ASSERT_EQ(0, uv_async_send(async));
 }
 
-void Agent::OnInspectorConnection(inspector_socket_t* socket) {
-  if (client_socket_ && inspector_is_active(client_socket_)) {
-    DisconnectAndDispose(client_socket_);
-  }
-  client_socket_ = socket;
-  inspector_read_start(socket, OnBufferAlloc, OnRemoteData);
-  uv_sem_post(&start_sem_);
-  platform_->CallOnForegroundThread(parent_env()->isolate(),
-      new SetConnectedTask(this, true));
-}
-
-bool Agent::RespondToGet(inspector_socket_t* socket, const char* path) {
-  const char PATH[] = "/json";
-  const char PATH_LIST[] = "/json/list";
-  const char PATH_VERSION[] = "/json/version";
-  const char PATH_ACTIVATE[] = "/json/activate/";
-  if (!strncmp(PATH_VERSION, path, sizeof(PATH_VERSION))) {
-    SendVersionResponse(socket);
-  } else if (!strncmp(PATH_LIST, path, sizeof(PATH_LIST))
-             || !strncmp(PATH, path, sizeof(PATH)))  {
-    SendTargentsListResponse(socket);
-  } else if (!strncmp(path, PATH_ACTIVATE, sizeof(PATH_ACTIVATE) - 1) &&
-             atoi(path + (sizeof(PATH_ACTIVATE) - 1)) == getpid()) {
-    const char TARGET_ACTIVATED[] = "Target activated";
-    SendHttpResponse(socket, TARGET_ACTIVATED, sizeof(TARGET_ACTIVATED) - 1);
-  } else {
-    return false;
-  }
-  return true;
-}
-
-bool Agent::AcceptsConnection(inspector_socket_t* socket, const char* path) {
-  return strncmp(DEVTOOLS_PATH, path, sizeof(DEVTOOLS_PATH)) == 0;
-}
-
-bool Agent::OnInspectorHandshake(inspector_socket_t* socket,
-                                 enum inspector_handshake_event state,
-                                 const char* path) {
-  Agent* agent = reinterpret_cast<Agent*>(socket->data);
-  switch (state) {
-  case kInspectorHandshakeHttpGet:
-    return agent->RespondToGet(socket, path);
-  case kInspectorHandshakeUpgrading:
-    return agent->AcceptsConnection(socket, path);
-  case kInspectorHandshakeUpgraded:
-    agent->OnInspectorConnection(socket);
-    return true;
-  case kInspectorHandshakeFailed:
-    return false;
-  default:
-    ASSERT(false);
-  }
-}
-
-void Agent::OnSocketConnection(uv_stream_t* server, int status) {
-  if (status == 0) {
-    inspector_socket_t* socket = reinterpret_cast<inspector_socket_t*>(
-        malloc(sizeof(inspector_socket_t)));
-    ASSERT_NE(nullptr, socket);
-    memset(socket, 0, sizeof(inspector_socket_t));
-    socket->data = server->data;
-    if (inspector_accept(server, socket, OnInspectorHandshake) != 0) {
-      free(socket);
-    }
-  }
-}
-
-void Agent::WorkerRun() {
-  int err;
-  sockaddr_in addr;
-  uv_tcp_t server;
-  uv_tcp_init(&child_loop_, &server);
-  uv_ip4_addr("0.0.0.0", port_, &addr);
-  server.data = this;
-  err = uv_tcp_bind(&server, (const struct sockaddr*)&addr, 0);
-  if (err == 0) {
-    err = uv_listen(reinterpret_cast<uv_stream_t*>(&server), 0,
-                    OnSocketConnection);
-  }
-  if (err == 0) {
-    fprintf(stderr, "Debugger listening on port %d. "
-        "To start debugging, open following URL in Chrome:\n\n"
-        "chrome-devtools://devtools/remote/serve_file/"
-        "@521e5b7e2b7cc66b4006a8a54cb9c4e57494a5ef/inspector.html?"
-        "experiments=true&v8only=true&ws=localhost:%d/node\n\n", port_, port_);
-  } else {
-    fprintf(stderr, "Unable to open devtools socket: %s\n", uv_strerror(err));
-    assert(false);
-  }
-  if (!wait_) {
-    uv_sem_post(&start_sem_);
-  }
-  uv_run(&child_loop_, UV_RUN_DEFAULT);
-  uv_close(reinterpret_cast<uv_handle_t*>(&server), nullptr);
-  uv_run(&child_loop_, UV_RUN_NOWAIT);
-}
-
-void Agent::ThreadCb(Agent* agent) {
-  agent->WorkerRun();
-}
 }  // namespace debugger
 }  // namespace node

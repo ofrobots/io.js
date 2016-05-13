@@ -4443,7 +4443,7 @@ static void StartNodeInstance(void* arg) {
 
 #if HAVE_INSPECTOR
     if (env->inspector_agent()->connected()) {
-      // TODO: Need to handle non-posix platforms too.
+      // TODO(repenaxa): Need to handle non-posix platforms too.
       // Restore signal dispositions, the app is done and is no longer
       // capable of handling signals.
       struct sigaction act;
