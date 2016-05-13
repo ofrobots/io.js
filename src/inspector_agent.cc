@@ -121,14 +121,21 @@ class V8NodeInspector : public blink::V8Inspector {
         agent_(agent),
         isolate_(env->isolate()),
         platform_(platform),
-        terminated_(false) {}
+        terminated_(false),
+        running_nested_loop_(false) {}
 
   void runMessageLoopOnPause(int contextGroupId) override {
-    while (!terminated_) {
+    if (running_nested_loop_)
+      return;
+    running_nested_loop_ = true;
+    do {
+      uv_mutex_lock(&agent_->pause_lock_);
+      uv_cond_wait(&agent_->pause_cond_, &agent_->pause_lock_);
+      uv_mutex_unlock(&agent_->pause_lock_);
       v8::platform::PumpMessageLoop(platform_, isolate_);
-      uv_async_send(&agent_->dataWritten_);
-    }
+    } while (!terminated_);
     terminated_ = false;
+    running_nested_loop_ = false;
   }
 
   void quitMessageLoopOnPause() override {
@@ -140,6 +147,7 @@ class V8NodeInspector : public blink::V8Inspector {
   v8::Isolate* isolate_;
   v8::Platform* platform_;
   bool terminated_;
+  bool running_nested_loop_;
 };
 
 static void DisposeAsyncCb(uv_handle_t* handle) {
@@ -217,29 +225,29 @@ static void SendTargentsListResponse(inspector_socket_t* socket) {
   SendHttpResponse(socket, buffer, len);
 }
 
-Agent::Agent(Environment* env) : queue_lock_init_(false),
-                                 port_(9229),
+Agent::Agent(Environment* env) : port_(9229),
                                  wait_(false),
                                  connected_(false),
                                  parent_env_(env),
-                                 async_init_(false),
                                  client_socket_(nullptr),
-                                 platform_(nullptr) {
+                                 inspector_(nullptr),
+                                 platform_(nullptr),
+                                 dispatching_messages_(false) {
   int err;
   err = uv_sem_init(&start_sem_, 0);
   CHECK_EQ(err, 0);
 }
 
 Agent::~Agent() {
-  if (queue_lock_init_) {
-    uv_mutex_destroy(&queue_lock_);
-  }
-  if (async_init_) {
-    uv_close(reinterpret_cast<uv_handle_t*>(&dataWritten_), nullptr);
-  }
+  if (!inspector_)
+    return;
+  uv_mutex_destroy(&queue_lock_);
+  uv_mutex_destroy(&pause_lock_);
+  uv_cond_init(&pause_cond_);
+  uv_close(reinterpret_cast<uv_handle_t*>(&dataWritten_), nullptr);
 }
 
-bool Agent::Start(v8::Platform* platform, int port, bool wait) {
+void Agent::Start(v8::Platform* platform, int port, bool wait) {
   auto env = parent_env();
   inspector_ = new V8NodeInspector(this, env, platform);
   inspector_->connectFrontend(new ChannelImpl(this));
@@ -249,18 +257,15 @@ bool Agent::Start(v8::Platform* platform, int port, bool wait) {
   platform_ = platform;
 
   err = uv_loop_init(&child_loop_);
-  if (err != 0)
-    goto loop_init_failed;
-
+  CHECK_EQ(err, 0);
   err = uv_async_init(env->event_loop(), &dataWritten_, nullptr);
-  if (err != 0)
-    goto async_init_failed;
-  async_init_ = true;
-
+  CHECK_EQ(err, 0);
   err = uv_mutex_init(&queue_lock_);
-  if (err != 0)
-    goto mutex_init_failed;
-  queue_lock_init_ = true;
+  CHECK_EQ(err, 0);
+  err = uv_mutex_init(&pause_lock_);
+  CHECK_EQ(err, 0);
+  err = uv_cond_init(&pause_cond_);
+  CHECK_EQ(err, 0);
 
   uv_unref(reinterpret_cast<uv_handle_t*>(&dataWritten_));
 
@@ -270,21 +275,8 @@ bool Agent::Start(v8::Platform* platform, int port, bool wait) {
   err = uv_thread_create(&thread_,
                          reinterpret_cast<uv_thread_cb>(ThreadCb),
                          this);
-  if (err != 0)
-    goto thread_create_failed;
-  uv_sem_wait(&start_sem_);
-
-  return true;
-
- thread_create_failed:
-  uv_mutex_destroy(&queue_lock_);
- mutex_init_failed:
-  uv_close(reinterpret_cast<uv_handle_t*>(&dataWritten_), nullptr);
- async_init_failed:
-  err = uv_loop_close(&child_loop_);
   CHECK_EQ(err, 0);
- loop_init_failed:
-  return false;
+  uv_sem_wait(&start_sem_);
 }
 
 void Agent::Stop() {
@@ -300,6 +292,9 @@ void Agent::Stop() {
 }
 
 void Agent::PostMessages() {
+  if (dispatching_messages_)
+    return;
+  dispatching_messages_ = true;
   std::vector<blink::protocol::String16> messages;
   uv_mutex_lock(&queue_lock_);
   messages.swap(message_queue_);
@@ -308,6 +303,8 @@ void Agent::PostMessages() {
   for (auto const& message : messages) {
     inspector_->dispatchMessageFromFrontend(message);
   }
+  uv_async_send(&dataWritten_);
+  dispatching_messages_ = false;
 }
 
 static void InterruptCallback(v8::Isolate*, void* agent) {
@@ -330,6 +327,7 @@ void Agent::OnRemoteData(uv_stream_t* stream, ssize_t read, const uv_buf_t* b) {
     agent->parent_env()->isolate()
         ->RequestInterrupt(InterruptCallback, agent);
     uv_async_send(&agent->dataWritten_);
+    uv_cond_broadcast(&agent->pause_cond_);
   } else if (read < 0) {
     if (agent->client_socket_ == socket) {
       agent->client_socket_ = nullptr;
