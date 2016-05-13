@@ -4455,9 +4455,7 @@ static void StartNodeInstance(void* arg) {
         CHECK_EQ(0, sigaction(nr, &act, nullptr));
       }
       fprintf(stderr, "Waiting for the debugger to disconnect...\n");
-      while (env->inspector_agent()->connected()) {
-        v8::platform::PumpMessageLoop(default_platform, isolate);
-      }
+      env->inspector_agent()->WaitForDisconnect();
     }
 #endif
 
