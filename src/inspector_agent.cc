@@ -307,6 +307,10 @@ void Agent::PostMessages() {
   dispatching_messages_ = false;
 }
 
+bool Agent::IsStarted() {
+  return !!platform_;
+}
+
 static void InterruptCallback(v8::Isolate*, void* agent) {
   reinterpret_cast<Agent*>(agent)->PostMessages();
 }

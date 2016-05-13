@@ -41,6 +41,7 @@ class Agent {
 
   void PostMessages();
 
+  bool IsStarted();
   bool connected() {  return connected_; }
 
  protected:
