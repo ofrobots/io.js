@@ -35,7 +35,7 @@ class Agent {
   ~Agent();
 
   // Start the inspector agent thread
-  bool Start(v8::Platform* platform, int port, bool wait);
+  void Start(v8::Platform* platform, int port, bool wait);
   // Stop the inspector agent
   void Stop();
 
@@ -54,8 +54,9 @@ class Agent {
   static void ParentSignalCb(uv_async_t* signal);
 
   uv_sem_t start_sem_;
+  uv_cond_t pause_cond_;
   uv_mutex_t queue_lock_;
-  bool queue_lock_init_;
+  uv_mutex_t pause_lock_;
   std::vector<blink::protocol::String16> message_queue_;
 
   int port_;
@@ -68,13 +69,13 @@ class Agent {
 
   uv_tcp_t server_;
   uv_async_t dataWritten_;
-  bool async_init_;
   // Currently it is simply the last inspector connection. Later we may consider
   // some sort of policy - e.g. closing a previous connection or supporting
   // multiple connections.
   inspector_socket_t* client_socket_;
   blink::V8Inspector* inspector_;
   v8::Platform* platform_;
+  bool dispatching_messages_;
 
   static bool OnInspectorHandshake(inspector_socket_t* socket,
                                    enum inspector_handshake_event state,
