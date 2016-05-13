@@ -243,7 +243,7 @@ class V8NodeInspector : public blink::V8Inspector {
       uv_mutex_lock(&agent_->pause_lock_);
       uv_cond_wait(&agent_->pause_cond_, &agent_->pause_lock_);
       uv_mutex_unlock(&agent_->pause_lock_);
-      v8::platform::PumpMessageLoop(platform_, isolate_);
+      while(v8::platform::PumpMessageLoop(platform_, isolate_)) {};
     } while (!terminated_);
     terminated_ = false;
     running_nested_loop_ = false;
@@ -279,7 +279,7 @@ Agent::~Agent() {
     return;
   uv_mutex_destroy(&queue_lock_);
   uv_mutex_destroy(&pause_lock_);
-  uv_cond_init(&pause_cond_);
+  uv_cond_destroy(&pause_cond_);
   uv_close(reinterpret_cast<uv_handle_t*>(&data_written_), nullptr);
 }
 
@@ -336,6 +336,10 @@ void Agent::Stop() {
 
 bool Agent::IsStarted() {
   return !!platform_;
+}
+
+void Agent::WaitForDisconnect() {
+  inspector_->runMessageLoopOnPause(0);
 }
 
 // static
@@ -407,7 +411,6 @@ void Agent::OnRemoteDataIO(uv_stream_t* stream,
     agent->parent_env_->isolate()
         ->RequestInterrupt(InterruptCallback, agent);
     uv_async_send(&agent->data_written_);
-    uv_cond_broadcast(&agent->pause_cond_);
   } else if (read < 0) {
     if (agent->client_socket_ == socket) {
       agent->client_socket_ = nullptr;
@@ -422,6 +425,7 @@ void Agent::OnRemoteDataIO(uv_stream_t* stream,
       uv_async_send(&agent->data_written_);
     }
   }
+  uv_cond_broadcast(&agent->pause_cond_);
 }
 
 // static

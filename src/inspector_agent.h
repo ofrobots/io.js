@@ -41,6 +41,7 @@ class Agent {
 
   bool IsStarted();
   bool connected() {  return connected_; }
+  void WaitForDisconnect();
 
  protected:
   static void ThreadCbIO(Agent* agent);
