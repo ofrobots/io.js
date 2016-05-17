@@ -12,8 +12,9 @@ assert.equal(util.inspect(function() {}), '[Function]');
 assert.equal(util.inspect(undefined), 'undefined');
 assert.equal(util.inspect(null), 'null');
 assert.equal(util.inspect(/foo(bar\n)?/gi), '/foo(bar\\n)?/gi');
-assert.equal(util.inspect(new Date('Sun, 14 Feb 2010 11:48:40 GMT')),
+assert.strictEqual(util.inspect(new Date('Sun, 14 Feb 2010 11:48:40 GMT')),
   new Date('2010-02-14T12:48:40+01:00').toISOString());
+assert.strictEqual(util.inspect(new Date('')), (new Date('')).toString());
 
 assert.equal(util.inspect('\n\u0001'), "'\\n\\u0001'");
 
@@ -301,7 +302,7 @@ errors.forEach(function(err) {
   assert.equal(util.inspect(err), err.stack);
 });
 try {
-  undef();
+  undef(); // eslint-disable-line no-undef
 } catch (e) {
   assert.equal(util.inspect(e), e.stack);
 }
@@ -647,4 +648,59 @@ checkAlignment(new Map(big_array.map(function(y) { return [y, null]; })));
 {
   const x = Object.create(null);
   assert.equal(util.inspect(x), '{}');
+}
+
+// The following maxArrayLength tests were introduced after v6.0.0 was released.
+// Do not backport to v5/v4 unless all of
+// https://github.com/nodejs/node/pull/6334 is backported.
+{
+  const x = Array(101);
+  assert(/1 more item/.test(util.inspect(x)));
+}
+
+{
+  const x = Array(101);
+  assert(!/1 more item/.test(util.inspect(x, {maxArrayLength: 101})));
+}
+
+{
+  const x = Array(101);
+  assert(/^\[ ... 101 more items \]$/.test(
+      util.inspect(x, {maxArrayLength: 0})));
+}
+
+{
+  const x = new Uint8Array(101);
+  assert(/1 more item/.test(util.inspect(x)));
+}
+
+{
+  const x = new Uint8Array(101);
+  assert(!/1 more item/.test(util.inspect(x, {maxArrayLength: 101})));
+}
+
+{
+  const x = new Uint8Array(101);
+  assert(/\[ ... 101 more items \]$/.test(
+      util.inspect(x, {maxArrayLength: 0})));
+}
+
+{
+  const x = Array(101);
+  assert(!/1 more item/.test(util.inspect(x, {maxArrayLength: null})));
+}
+
+{
+  const x = Array(101);
+  assert(!/1 more item/.test(util.inspect(x, {maxArrayLength: Infinity})));
+}
+
+{
+  const x = new Uint8Array(101);
+  assert(!/1 more item/.test(util.inspect(x, {maxArrayLength: null})));
+}
+
+{
+  const x = new Uint8Array(101);
+  assert(!/1 more item/.test(util.inspect(x, {maxArrayLength: Infinity})));
 }

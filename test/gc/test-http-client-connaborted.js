@@ -6,7 +6,7 @@ function serverHandler(req, res) {
   res.connection.destroy();
 }
 
-const http  = require('http');
+const http = require('http');
 const weak = require('weak');
 const common = require('../common');
 const assert = require('assert');
@@ -53,13 +53,13 @@ function afterGC() {
 
 var timer;
 function statusLater() {
-  gc();
+  global.gc();
   if (timer) clearTimeout(timer);
   timer = setTimeout(status, 1);
 }
 
 function status() {
-  gc();
+  global.gc();
   console.log('Done: %d/%d', done, todo);
   console.log('Collected: %d/%d', countGC, count);
   if (done === todo) {

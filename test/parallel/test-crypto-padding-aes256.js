@@ -3,7 +3,7 @@ var common = require('../common');
 var assert = require('assert');
 
 if (!common.hasCrypto) {
-  console.log('1..0 # Skipped: missing crypto');
+  common.skip('missing crypto');
   return;
 }
 var crypto = require('crypto');
@@ -11,7 +11,7 @@ var crypto = require('crypto');
 crypto.DEFAULT_ENCODING = 'buffer';
 
 function aes256(decipherFinal) {
-  var iv  = Buffer.from('00000000000000000000000000000000', 'hex');
+  var iv = Buffer.from('00000000000000000000000000000000', 'hex');
   var key = Buffer.from('0123456789abcdef0123456789abcdef' +
                        '0123456789abcdef0123456789abcdef', 'hex');
 

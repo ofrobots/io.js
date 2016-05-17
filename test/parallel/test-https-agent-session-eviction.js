@@ -3,7 +3,7 @@
 const common = require('../common');
 
 if (!common.hasCrypto) {
-  console.log('1..0 # Skipped: missing crypto');
+  common.skip('missing crypto');
   return;
 }
 
@@ -26,7 +26,7 @@ https.createServer(options, function(req, res) {
 });
 
 // Do request and let agent cache the session
-function first(server)  {
+function first(server) {
   const req = https.request({
     port: common.PORT,
     rejectUnauthorized: false

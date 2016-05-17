@@ -30,6 +30,11 @@ struct sockaddr;
 
 namespace node {
 
+// Set in node.cc by ParseArgs when --preserve-symlinks is used.
+// Used in node_config.cc to set a constant on process.binding('config')
+// that is used by lib/module.js
+extern bool config_preserve_symlinks;
+
 // Forward declaration
 class Environment;
 
@@ -169,7 +174,7 @@ inline MUST_USE_RESULT bool ParseArrayIndex(v8::Local<v8::Value> arg,
     return true;
   }
 
-  int32_t tmp_i = arg->Uint32Value();
+  int64_t tmp_i = arg->IntegerValue();
 
   if (tmp_i < 0)
     return false;
@@ -212,7 +217,7 @@ class ArrayBufferAllocator : public v8::ArrayBuffer::Allocator {
 // by clearing all callbacks that could handle the error.
 void ClearFatalExceptionHandlers(Environment* env);
 
-enum NodeInstanceType { MAIN, WORKER };
+enum NodeInstanceType { MAIN, WORKER, REMOTE_DEBUG_SERVER };
 
 class NodeInstanceData {
   public:
@@ -254,6 +259,10 @@ class NodeInstanceData {
 
     bool is_worker() {
       return node_instance_type_ == WORKER;
+    }
+
+    bool is_remote_debug_server() {
+      return node_instance_type_ == REMOTE_DEBUG_SERVER;
     }
 
     int argc() {

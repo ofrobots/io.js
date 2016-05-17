@@ -150,7 +150,7 @@ if (process.argv[2] === 'child') {
       testCmd += 'ulimit -c 0 && ';
     }
 
-    testCmd +=  process.argv[0];
+    testCmd += process.argv[0];
     testCmd += ' ' + '--abort-on-uncaught-exception';
     testCmd += ' ' + process.argv[1];
     testCmd += ' ' + 'child';
@@ -160,8 +160,8 @@ if (process.argv[2] === 'child') {
 
     child.on('exit', function onExit(exitCode, signal) {
       const errMsg = 'Test at index ' + testIndex + ' should have aborted ' +
-          'but instead exited with exit code ' + exitCode + ' and signal ' +
-          signal;
+                     'but instead exited with exit code ' + exitCode +
+                     ' and signal ' + signal;
       assert(common.nodeProcessAborted(exitCode, signal), errMsg);
     });
   });

@@ -3,6 +3,9 @@
 
 #include "ares.h"
 #include "debug-agent.h"
+#if HAVE_INSPECTOR
+#include "inspector_agent.h"
+#endif
 #include "handle_wrap.h"
 #include "req-wrap.h"
 #include "tree.h"
@@ -72,6 +75,7 @@ namespace node {
   V(buffer_string, "buffer")                                                  \
   V(bytes_string, "bytes")                                                    \
   V(bytes_parsed_string, "bytesParsed")                                       \
+  V(bytes_read_string, "bytesRead")                                           \
   V(cached_data_string, "cachedData")                                         \
   V(cached_data_produced_string, "cachedDataProduced")                        \
   V(cached_data_rejected_string, "cachedDataRejected")                        \
@@ -94,6 +98,7 @@ namespace node {
   V(exchange_string, "exchange")                                              \
   V(idle_string, "idle")                                                      \
   V(irq_string, "irq")                                                        \
+  V(encoding_string, "encoding")                                              \
   V(enter_string, "enter")                                                    \
   V(env_pairs_string, "envPairs")                                             \
   V(env_string, "env")                                                        \
@@ -121,6 +126,7 @@ namespace node {
   V(handle_string, "handle")                                                  \
   V(heap_total_string, "heapTotal")                                           \
   V(heap_used_string, "heapUsed")                                             \
+  V(homedir_string, "homedir")                                                \
   V(hostmaster_string, "hostmaster")                                          \
   V(ignore_string, "ignore")                                                  \
   V(immediate_callback_string, "_immediateCallback")                          \
@@ -206,6 +212,7 @@ namespace node {
   V(service_string, "service")                                                \
   V(servername_string, "servername")                                          \
   V(session_id_string, "sessionId")                                           \
+  V(shell_string, "shell")                                                    \
   V(signal_string, "signal")                                                  \
   V(size_string, "size")                                                      \
   V(sni_context_err_string, "Invalid SNI context")                            \
@@ -235,6 +242,7 @@ namespace node {
   V(uid_string, "uid")                                                        \
   V(unknown_string, "<unknown>")                                              \
   V(user_string, "user")                                                      \
+  V(username_string, "username")                                              \
   V(uv_string, "uv")                                                          \
   V(valid_from_string, "valid_from")                                          \
   V(valid_to_string, "valid_to")                                              \
@@ -542,6 +550,12 @@ class Environment {
     return &debugger_agent_;
   }
 
+#if HAVE_INSPECTOR
+  inline inspector::Agent* inspector_agent() {
+    return &inspector_agent_;
+  }
+#endif
+
   typedef ListHead<HandleWrap, &HandleWrap::handle_wrap_queue_> HandleWrapQueue;
   typedef ListHead<ReqWrap<uv_req_t>, &ReqWrap<uv_req_t>::req_wrap_queue_>
           ReqWrapQueue;
@@ -579,6 +593,9 @@ class Environment {
   size_t makecallback_cntr_;
   int64_t async_wrap_uid_;
   debugger::Agent debugger_agent_;
+#if HAVE_INSPECTOR
+  inspector::Agent inspector_agent_;
+#endif
 
   HandleWrapQueue handle_wrap_queue_;
   ReqWrapQueue req_wrap_queue_;

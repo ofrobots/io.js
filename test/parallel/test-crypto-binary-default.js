@@ -8,7 +8,7 @@ var assert = require('assert');
 var constants = require('constants');
 
 if (!common.hasCrypto) {
-  console.log('1..0 # Skipped: missing crypto');
+  common.skip('missing crypto');
   return;
 }
 var crypto = require('crypto');
@@ -30,19 +30,19 @@ var rsaKeyPem = fs.readFileSync(common.fixturesDir + '/test_rsa_privkey.pem',
 
 // PFX tests
 assert.doesNotThrow(function() {
-  tls.createSecureContext({pfx:certPfx, passphrase:'sample'});
+  tls.createSecureContext({pfx: certPfx, passphrase: 'sample'});
 });
 
 assert.throws(function() {
-  tls.createSecureContext({pfx:certPfx});
+  tls.createSecureContext({pfx: certPfx});
 }, 'mac verify failure');
 
 assert.throws(function() {
-  tls.createSecureContext({pfx:certPfx, passphrase:'test'});
+  tls.createSecureContext({pfx: certPfx, passphrase: 'test'});
 }, 'mac verify failure');
 
 assert.throws(function() {
-  tls.createSecureContext({pfx:'sample', passphrase:'test'});
+  tls.createSecureContext({pfx: 'sample', passphrase: 'test'});
 }, 'not enough data');
 
 // Test HMAC
@@ -347,8 +347,11 @@ var a4 = crypto.createHash('sha1').update('Test123').digest('buffer');
 
 if (!common.hasFipsCrypto) {
   var a0 = crypto.createHash('md5').update('Test123').digest('binary');
-  assert.equal(a0, 'h\u00ea\u00cb\u0097\u00d8o\fF!\u00fa+\u000e\u0017\u00ca' +
-               '\u00bd\u008c', 'Test MD5 as binary');
+  assert.equal(
+    a0,
+    'h\u00ea\u00cb\u0097\u00d8o\fF!\u00fa+\u000e\u0017\u00ca\u00bd\u008c',
+    'Test MD5 as binary'
+  );
 }
 
 assert.equal(a1, '8308651804facb7b9af8ffc53a33a22d6a1c8ac2', 'Test SHA1');
@@ -363,9 +366,11 @@ assert.equal(a3, '\u00c1(4\u00f1\u0003\u001fd\u0097!O\'\u00d4C/&Qz\u00d4' +
                  '\u00c2\u0006\u00da0\u00a1\u00879(G\u00ed\'',
              'Test SHA512 as assumed binary');
 
-assert.deepEqual(a4,
-                 Buffer.from('8308651804facb7b9af8ffc53a33a22d6a1c8ac2', 'hex'),
-                 'Test SHA1');
+assert.deepStrictEqual(
+  a4,
+  Buffer.from('8308651804facb7b9af8ffc53a33a22d6a1c8ac2', 'hex'),
+  'Test SHA1'
+);
 
 // Test multiple updates to same hash
 var h1 = crypto.createHash('sha1').update('Test123').digest('hex');

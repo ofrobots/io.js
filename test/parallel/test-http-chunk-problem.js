@@ -3,7 +3,7 @@
 const common = require('../common');
 const assert = require('assert');
 if (!common.hasCrypto) {
-  console.log('1..0 # Skipped: missing crypto');
+  common.skip('missing crypto');
   return;
 }
 
@@ -11,7 +11,7 @@ if (process.argv[2] === 'request') {
   const http = require('http');
   const options = {
     port: common.PORT,
-    path : '/'
+    path: '/'
   };
 
   http.get(options, (res) => {
