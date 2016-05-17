@@ -238,6 +238,7 @@ class V8NodeInspector : public blink::V8Inspector {
   void runMessageLoopOnPause(int contextGroupId) override {
     if (running_nested_loop_)
       return;
+    terminated_ = false;
     running_nested_loop_ = true;
     do {
       uv_mutex_lock(&agent_->pause_lock_);
