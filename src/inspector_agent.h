@@ -29,6 +29,12 @@ namespace inspector {
 
 class ChannelImpl;
 
+enum PendingConnectionStatus {
+  kInspectorStatusConnected,
+  kInspectorStatusDisconnected,
+  kInspectorStatusNone,
+};
+
 class Agent {
  public:
   explicit Agent(node::Environment* env);
@@ -58,11 +64,12 @@ class Agent {
 
   void PostMessages();
   void SetConnected(bool connected);
+  void SetConnectedIO(bool connected);
   void Write(const blink::protocol::String16& message);
 
   uv_sem_t start_sem_;
   uv_cond_t pause_cond_;
-  uv_mutex_t queue_lock_;
+  uv_mutex_t agent_state_lock_;
   uv_mutex_t pause_lock_;
   uv_thread_t thread_;
   uv_loop_t child_loop_;
@@ -79,13 +86,21 @@ class Agent {
   v8::Platform* platform_;
   std::vector<blink::protocol::String16> message_queue_;
   bool dispatching_messages_;
+  PendingConnectionStatus pending_connected_;
+
+  template<typename T>
+  T SafeSetAndGetField(T& field, T new_value) {
+    uv_mutex_lock(&agent_state_lock_);
+    std::swap(field, new_value);
+    uv_mutex_unlock(&agent_state_lock_);
+    return new_value;
+  }
 
   friend class AsyncWriteRequest;
   friend class ChannelImpl;
   friend class DispatchOnInspectorBackendTask;
   friend class SetConnectedTask;
   friend class V8NodeInspector;
-  friend void InterruptCallback(v8::Isolate*, void* agent);
 };
 
 }  // namespace inspector
