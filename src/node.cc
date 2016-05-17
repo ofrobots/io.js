@@ -4463,7 +4463,6 @@ static void StartNodeInstance(void* arg) {
         act.sa_handler = (nr == SIGPIPE) ? SIG_IGN : SIG_DFL;
         CHECK_EQ(0, sigaction(nr, &act, nullptr));
       }
-      fprintf(stderr, "Waiting for the debugger to disconnect...\n");
       env->inspector_agent()->WaitForDisconnect();
     }
 #endif
