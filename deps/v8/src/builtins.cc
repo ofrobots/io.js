@@ -481,9 +481,13 @@ void Builtins::Generate_ObjectHasOwnProperty(
   assembler->Bind(&keyisindex);
   {
     Label if_objectissimple(assembler);
-    assembler->Branch(assembler->Int32LessThanOrEqual(
-                          instance_type, assembler->Int32Constant(
+    assembler->Branch(assembler->Word32Or(
+                          assembler->Int32LessThanOrEqual(
+                              instance_type, assembler->Int32Constant(
                                              LAST_CUSTOM_ELEMENTS_RECEIVER)),
+                          assembler->Word32Equal(
+                              instance_type, assembler->Int32Constant(
+                                             JS_SPECIAL_API_OBJECT_TYPE))),
                       &call_runtime, &if_objectissimple);
     assembler->Bind(&if_objectissimple);
   }
