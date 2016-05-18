@@ -146,6 +146,12 @@ bool RespondToGet(inspector_socket_t* socket, const char* path) {
   return true;
 }
 
+void RunTaskInterruptCallback(v8::Isolate*, void* data) {
+  v8::Task* task = reinterpret_cast<v8::Task*>(data);
+  task->Run();
+  delete task;
+}
+
 }  // namespace
 
 namespace node {
@@ -153,10 +159,6 @@ namespace inspector {
 
 using blink::protocol::DictionaryValue;
 using blink::protocol::String16;
-
-void InterruptCallback(v8::Isolate*, void* agent) {
-  reinterpret_cast<Agent*>(agent)->PostMessages();
-}
 
 class DispatchOnInspectorBackendTask : public v8::Task {
  public:
@@ -212,17 +214,18 @@ class AsyncWriteRequest {
 
 class SetConnectedTask : public v8::Task {
  public:
-  SetConnectedTask(Agent* agent, bool connected)
-     : agent_(agent),
-       connected_(connected) {}
+  SetConnectedTask(Agent* agent): agent_(agent) {}
 
   void Run() override {
-    agent_->SetConnected(connected_);
+    int pending = agent_->SafeSetAndGetField(agent_->pending_connected_,
+        kInspectorStatusNone);
+    if (pending != kInspectorStatusNone) {
+      agent_->SetConnected(pending == kInspectorStatusConnected);
+    }
   }
 
  private:
   Agent* agent_;
-  bool connected_;
 };
 
 class V8NodeInspector : public blink::V8Inspector {
@@ -269,7 +272,8 @@ Agent::Agent(Environment* env) : port_(9229),
                                  client_socket_(nullptr),
                                  inspector_(nullptr),
                                  platform_(nullptr),
-                                 dispatching_messages_(false) {
+                                 dispatching_messages_(false),
+                                 pending_connected_(kInspectorStatusNone) {
   int err;
   err = uv_sem_init(&start_sem_, 0);
   CHECK_EQ(err, 0);
@@ -278,7 +282,7 @@ Agent::Agent(Environment* env) : port_(9229),
 Agent::~Agent() {
   if (!inspector_)
     return;
-  uv_mutex_destroy(&queue_lock_);
+  uv_mutex_destroy(&agent_state_lock_);
   uv_mutex_destroy(&pause_lock_);
   uv_cond_destroy(&pause_cond_);
   uv_close(reinterpret_cast<uv_handle_t*>(&data_written_), nullptr);
@@ -296,7 +300,7 @@ void Agent::Start(v8::Platform* platform, int port, bool wait) {
   CHECK_EQ(err, 0);
   err = uv_async_init(env->event_loop(), &data_written_, nullptr);
   CHECK_EQ(err, 0);
-  err = uv_mutex_init(&queue_lock_);
+  err = uv_mutex_init(&agent_state_lock_);
   CHECK_EQ(err, 0);
   err = uv_mutex_init(&pause_lock_);
   CHECK_EQ(err, 0);
@@ -390,10 +394,10 @@ void Agent::OnRemoteDataIO(uv_stream_t* stream,
       reinterpret_cast<inspector_socket_t*>(stream->data);
   Agent* agent = reinterpret_cast<Agent*>(socket->data);
   if (read > 0) {
-    uv_mutex_lock(&agent->queue_lock_);
+    uv_mutex_lock(&agent->agent_state_lock_);
     blink::protocol::String16 str(b->base, read - 1);
     agent->message_queue_.push_back(str);
-    uv_mutex_unlock(&agent->queue_lock_);
+    uv_mutex_unlock(&agent->agent_state_lock_);
     free(b->base);
 
     // TODO(pfeldman): Instead of blocking execution while debugger
@@ -409,8 +413,8 @@ void Agent::OnRemoteDataIO(uv_stream_t* stream,
 
     agent->platform_->CallOnForegroundThread(agent->parent_env_->isolate(),
         new DispatchOnInspectorBackendTask(agent));
-    agent->parent_env_->isolate()
-        ->RequestInterrupt(InterruptCallback, agent);
+    agent->parent_env_->isolate()->RequestInterrupt(RunTaskInterruptCallback,
+        new DispatchOnInspectorBackendTask(agent));
     uv_async_send(&agent->data_written_);
   } else if (read < 0) {
     if (agent->client_socket_ == socket) {
@@ -421,8 +425,7 @@ void Agent::OnRemoteDataIO(uv_stream_t* stream,
     // EOF
     if (agent->client_socket_ == socket) {
       agent->client_socket_ = nullptr;
-      agent->platform_->CallOnForegroundThread(agent->parent_env_->isolate(),
-          new SetConnectedTask(agent, false));
+      agent->SetConnectedIO(false);
       uv_async_send(&agent->data_written_);
     }
   }
@@ -469,23 +472,29 @@ void Agent::OnInspectorConnectionIO(inspector_socket_t* socket) {
   }
   client_socket_ = socket;
   inspector_read_start(socket, OnBufferAlloc, Agent::OnRemoteDataIO);
-  platform_->CallOnForegroundThread(parent_env_->isolate(),
-      new SetConnectedTask(this, true));
+  SetConnectedIO(true);
 }
 
 void Agent::PostMessages() {
   if (dispatching_messages_)
     return;
   dispatching_messages_ = true;
-  std::vector<blink::protocol::String16> messages;
-  uv_mutex_lock(&queue_lock_);
-  messages.swap(message_queue_);
-  uv_mutex_unlock(&queue_lock_);
-
+  std::vector<blink::protocol::String16> messages =
+      SafeSetAndGetField(message_queue_,
+          std::vector<blink::protocol::String16>());
   for (auto const& message : messages)
     inspector_->dispatchMessageFromFrontend(message);
   uv_async_send(&data_written_);
   dispatching_messages_ = false;
+}
+
+void Agent::SetConnectedIO(bool connected) {
+  SafeSetAndGetField(pending_connected_,
+      connected ? kInspectorStatusConnected : kInspectorStatusDisconnected);
+  platform_->CallOnForegroundThread(parent_env_->isolate(),
+      new SetConnectedTask(this));
+  parent_env_->isolate()->RequestInterrupt(RunTaskInterruptCallback,
+      new SetConnectedTask(this));
 }
 
 void Agent::SetConnected(bool connected) {
