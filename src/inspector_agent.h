@@ -71,6 +71,7 @@ class Agent {
   int port_;
   bool wait_;
   bool connected_;
+  bool shutting_down_;
   node::Environment* parent_env_;
 
   uv_async_t data_written_;

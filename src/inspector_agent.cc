@@ -265,6 +265,7 @@ class V8NodeInspector : public blink::V8Inspector {
 Agent::Agent(Environment* env) : port_(9229),
                                  wait_(false),
                                  connected_(false),
+                                 shutting_down_(false),
                                  parent_env_(env),
                                  client_socket_(nullptr),
                                  inspector_(nullptr),
@@ -340,6 +341,8 @@ bool Agent::IsStarted() {
 }
 
 void Agent::WaitForDisconnect() {
+  shutting_down_ = true;
+  fprintf(stderr, "Waiting for the debugger to disconnect...\n");
   inspector_->runMessageLoopOnPause(0);
 }
 
@@ -497,7 +500,8 @@ void Agent::SetConnected(bool connected) {
     fprintf(stderr, "Debugger attached.\n");
     inspector_->connectFrontend(new ChannelImpl(this));
   } else {
-    PrintDebuggerReadyMessage(port_);
+    if (!shutting_down_)
+      PrintDebuggerReadyMessage(port_);
     inspector_->quitMessageLoopOnPause();
     inspector_->disconnectFrontend();
   }
