@@ -4464,9 +4464,9 @@ static void StartNodeInstance(void* arg) {
 
 #if HAVE_INSPECTOR
     if (env->inspector_agent()->connected()) {
-      // TODO(repenaxa): Need to handle non-posix platforms too.
       // Restore signal dispositions, the app is done and is no longer
       // capable of handling signals.
+#ifdef __POSIX__
       struct sigaction act;
       memset(&act, 0, sizeof(act));
       for (unsigned nr = 1; nr < 32; nr += 1) {
@@ -4475,6 +4475,7 @@ static void StartNodeInstance(void* arg) {
         act.sa_handler = (nr == SIGPIPE) ? SIG_IGN : SIG_DFL;
         CHECK_EQ(0, sigaction(nr, &act, nullptr));
       }
+#endif
       env->inspector_agent()->WaitForDisconnect();
     }
 #endif
