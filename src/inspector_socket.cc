@@ -497,18 +497,18 @@ static size_t base64_encode(const unsigned char* src,
   return dlen;
 }
 
-static void generate_accept_string(const char* clientKey, char* buffer) {
+static void generate_accept_string(const char* client_key, char* buffer) {
   // Magic string from websockets spec.
-  const char wsMagic[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+  const char ws_magic[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+  size_t key_len = strlen(client_key);
+  size_t magic_len = sizeof(ws_magic) - 1;
 
-  // sizeof is computed at compile time and accounts for terminating '\0'
-  int len = strlen(clientKey) + sizeof(wsMagic);
-
-  char* buf = reinterpret_cast<char*>(malloc(len));
+  char* buf = reinterpret_cast<char*>(malloc(key_len + magic_len));
   CHECK_NE(buf, nullptr);
-  snprintf(buf, len, "%s%s", clientKey, wsMagic);
+  memcpy(buf, client_key, key_len);
+  memcpy(buf + key_len, ws_magic, magic_len);
   unsigned char hash[20];
-  SHA1((unsigned char*) buf, len - 1, hash);
+  SHA1((unsigned char*) buf, key_len + magic_len, hash);
   free(buf);
   base64_encode(hash, 20, buffer, ACCEPT_KEY_LENGTH);
   buffer[ACCEPT_KEY_LENGTH] = '\0';
@@ -612,15 +612,21 @@ static int message_complete_cb(http_parser* parser) {
     char accept_string[ACCEPT_KEY_LENGTH + 1];
     generate_accept_string(state->ws_key, accept_string);
 
-    const char accept_ws_format[] = "HTTP/1.1 101 Switching Protocols\r\n"
+    const char accept_ws_prefix[] = "HTTP/1.1 101 Switching Protocols\r\n"
                                     "Upgrade: websocket\r\n"
                                     "Connection: Upgrade\r\n"
-                                    "Sec-WebSocket-Accept: %s\r\n\r\n";
+                                    "Sec-WebSocket-Accept: ";
+    const char accept_ws_suffix[] = "\r\n\r\n";
     // Format has two chars (%s) that are replaced with actual key
-    char accept_response[sizeof(accept_ws_format) + ACCEPT_KEY_LENGTH - 2];
-    snprintf(accept_response, sizeof(accept_response),
-             accept_ws_format, accept_string);
-    int len = sizeof(accept_response) - 1;
+    char accept_response[sizeof(accept_ws_prefix) - 1 +
+                         sizeof(accept_ws_suffix) - 1 +
+                         ACCEPT_KEY_LENGTH];
+    memcpy(accept_response, accept_ws_prefix, sizeof(accept_ws_prefix) - 1);
+    memcpy(accept_response + sizeof(accept_ws_prefix) - 1,
+        accept_string, ACCEPT_KEY_LENGTH);
+    memcpy(accept_response + sizeof(accept_ws_prefix) - 1 + ACCEPT_KEY_LENGTH,
+        accept_ws_suffix, sizeof(accept_ws_suffix) - 1);
+    int len = sizeof(accept_response);
     if (write_to_client(inspector, accept_response, len) >= 0) {
       handshake_complete(inspector);
     } else {
