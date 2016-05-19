@@ -731,10 +731,17 @@
         'GTEST_DONT_DEFINE_ASSERT_NE=1',
       ],
       'sources': [
-        'src/inspector_socket.cc',
-        'test/cctest/util.cc',
-        'test/cctest/inspector_socket.cc',
+        'test/cctest/util.cc'
       ],
+
+      'conditions': [
+        ['v8_inspector=="true"', {
+          'sources': [
+            'src/inspector_socket.cc',
+            'test/cctest/test_inspector_socket.cc'
+          ]
+        }]
+      ]
     }
   ], # end targets
 
