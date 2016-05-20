@@ -176,19 +176,19 @@ class ChannelImpl final : public blink::protocol::FrontendChannel {
   virtual ~ChannelImpl() {}
  private:
   virtual void sendProtocolResponse(int sessionId, int callId,
-                                    PassOwnPtr<DictionaryValue> message)
+                                    std::unique_ptr<DictionaryValue> message)
                                     override {
-    sendMessageToFrontend(message);
+    sendMessageToFrontend(std::move(message));
   }
 
-  virtual void sendProtocolNotification(PassOwnPtr<DictionaryValue> message)
-                                        override {
-    sendMessageToFrontend(message);
+  virtual void sendProtocolNotification(
+      std::unique_ptr<DictionaryValue> message) override {
+    sendMessageToFrontend(std::move(message));
   }
 
   virtual void flush() override { }
 
-  void sendMessageToFrontend(PassOwnPtr<DictionaryValue> message) {
+  void sendMessageToFrontend(std::unique_ptr<DictionaryValue> message) {
     agent_->Write(message->toJSONString());
   }
 
