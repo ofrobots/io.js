@@ -9,7 +9,7 @@
 #include <functional>
 #include <locale>
 
-#define ASSERT(k)
+#define DCHECK(k)
 
 namespace blink {
 namespace protocol {
@@ -90,13 +90,13 @@ extern const LChar ASCIICaseFoldTable[256] = {
 
 template<typename CharType> inline int toASCIIHexValue(CharType c)
 {
-    ASSERT(isASCIIHexDigit(c));
+    DCHECK(isASCIIHexDigit(c));
     return c < 'A' ? c - '0' : (c - 'A' + 10) & 0xF;
 }
 
 template<typename CharType> inline int toASCIIHexValue(CharType upperValue, CharType lowerValue)
 {
-    ASSERT(isASCIIHexDigit(upperValue) && isASCIIHexDigit(lowerValue));
+    DCHECK(isASCIIHexDigit(upperValue) && isASCIIHexDigit(lowerValue));
     return ((toASCIIHexValue(upperValue) << 4) & 0xF0) | toASCIIHexValue(lowerValue);
 }
 
@@ -116,7 +116,7 @@ template<typename CharType> inline bool isASCIIAlphaCaselessEqual(CharType cssCh
 {
     // This function compares a (preferrably) constant ASCII
     // lowercase letter to any input character.
-    ASSERT(character >= 'a' && character <= 'z');
+    DCHECK(character >= 'a' && character <= 'z');
     return LIKELY(toASCIILowerUnchecked(cssCharacter) == character);
 }
 
@@ -276,43 +276,10 @@ ConversionResult convertUTF16ToUTF8(
     return result;
 }
 
-// Magic values subtracted from a buffer value during UTF8 conversion.
-// This table contains as many values as there might be trailing bytes
-// in a UTF-8 sequence.
-static const UChar32 offsetsFromUTF8[6] = { 0x00000000UL, 0x00003080UL, 0x000E2080UL, 0x03C82080UL, static_cast<UChar32>(0xFA082080UL), static_cast<UChar32>(0x82082080UL) };
-
-static inline UChar32 readUTF8Sequence(const char*& sequence, unsigned length)
-{
-    UChar32 character = 0;
-
-    // The cases all fall through.
-    switch (length) {
-    case 6:
-        character += static_cast<unsigned char>(*sequence++);
-        character <<= 6;
-    case 5:
-        character += static_cast<unsigned char>(*sequence++);
-        character <<= 6;
-    case 4:
-        character += static_cast<unsigned char>(*sequence++);
-        character <<= 6;
-    case 3:
-        character += static_cast<unsigned char>(*sequence++);
-        character <<= 6;
-    case 2:
-        character += static_cast<unsigned char>(*sequence++);
-        character <<= 6;
-    case 1:
-        character += static_cast<unsigned char>(*sequence++);
-    }
-
-    return character - offsetsFromUTF8[length - 1];
-}
-
 // Helper to write a three-byte UTF-8 code point to the buffer, caller must check room is available.
 static inline void putUTF8Triple(char*& buffer, UChar ch)
 {
-    ASSERT(ch >= 0x0800);
+    DCHECK(ch >= 0x0800);
     *buffer++ = static_cast<char>(((ch >> 12) & 0x0F) | 0xE0);
     *buffer++ = static_cast<char>(((ch >> 6) & 0x3F) | 0x80);
     *buffer++ = static_cast<char>((ch & 0x3F) | 0x80);
@@ -336,6 +303,22 @@ static inline wstring &rtrim(wstring &s)
 static inline wstring &trim(wstring &s)
 {
     return ltrim(rtrim(s));
+}
+
+// static
+std::string String16::intToString(int i)
+{
+    char buffer[50];
+    std::snprintf(buffer, 50, "%d", i);
+    return std::string(buffer);
+}
+
+// static
+std::string String16::doubleToString(double d)
+{
+    char buffer[100];
+    std::snprintf(buffer, 100, "%f", d);
+    return std::string(buffer);
 }
 
 std::string String16::utf8() const
@@ -363,11 +346,11 @@ std::string String16::utf8() const
 
     bool strict = false;
     ConversionResult result = convertUTF16ToUTF8(&characters, characters + length, &buffer, buffer + bufferVector.size(), strict);
-    ASSERT(result != targetExhausted); // (length * 3) should be sufficient for any conversion
+    DCHECK(result != targetExhausted); // (length * 3) should be sufficient for any conversion
 
     // Only produced from strict conversion.
     if (result == sourceIllegal) {
-        ASSERT(strict);
+        DCHECK(strict);
         return std::string();
     }
 
@@ -379,11 +362,11 @@ std::string String16::utf8() const
         // was as an unpaired high surrogate would have been handled in
         // the middle of a string with non-strict conversion - which is
         // to say, simply encode it to UTF-8.
-        ASSERT((characters + 1) == (m_impl.data() + length));
-        ASSERT((*characters >= 0xD800) && (*characters <= 0xDBFF));
+        DCHECK((characters + 1) == (m_impl.data() + length));
+        DCHECK((*characters >= 0xD800) && (*characters <= 0xDBFF));
         // There should be room left, since one UChar hasn't been
         // converted.
-        ASSERT((buffer + 3) <= (buffer + bufferVector.size()));
+        DCHECK((buffer + 3) <= (buffer + bufferVector.size()));
         putUTF8Triple(buffer, *characters);
     }
 

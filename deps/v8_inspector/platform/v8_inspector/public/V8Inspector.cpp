@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 
-#include "V8Inspector.h"
+#include "platform/v8_inspector/public/V8Inspector.h"
 
 #include "platform/inspector_protocol/Dispatcher.h"
 #include "platform/v8_inspector/V8StringUtil.h"
@@ -16,24 +16,24 @@
 
 namespace blink {
 
-
 V8Inspector::V8Inspector(v8::Isolate* isolate, v8::Local<v8::Context> context)
 {
     m_debugger = V8Debugger::create(isolate, this);
     m_session = m_debugger->connect(1);
     m_session->setClient(this);
+    m_state = protocol::DictionaryValue::create();
+    m_state->setValue("runtime", protocol::DictionaryValue::create());
+    m_state->setValue("debugger", protocol::DictionaryValue::create());
+    m_state->setValue("profiler", protocol::DictionaryValue::create());
+    m_state->setValue("heapProfiler", protocol::DictionaryValue::create());
 
-    m_session->debuggerAgent()->setInspectorState(
-        protocol::DictionaryValue::create().leakPtr());
-    m_session->heapProfilerAgent()->setInspectorState(
-        protocol::DictionaryValue::create().leakPtr());
-    m_session->profilerAgent()->setInspectorState(
-        protocol::DictionaryValue::create().leakPtr());
-    m_session->runtimeAgent()->setInspectorState(
-        protocol::DictionaryValue::create().leakPtr());
+    m_session->runtimeAgent()->setInspectorState(m_state->getObject("runtime"));
+    m_session->debuggerAgent()->setInspectorState(m_state->getObject("debugger"));
+    m_session->profilerAgent()->setInspectorState(m_state->getObject("profiler"));
+    m_session->heapProfilerAgent()->setInspectorState(m_state->getObject("heapProfiler"));
 
     m_debugger->contextCreated(V8ContextInfo(context, 1, true, "",
-        "NodeJS Main Context", "frameId", false));
+        "NodeJS Main Context", "", false));
 }
 
 V8Inspector::~V8Inspector()
@@ -62,8 +62,8 @@ bool V8Inspector::formatAccessorsAsProperties(v8::Local<v8::Value> value)
 
 void V8Inspector::connectFrontend(protocol::FrontendChannel* channel)
 {
-    ASSERT(!m_frontend);
-    m_frontend = adoptPtr(new protocol::Frontend(channel));
+    DCHECK(!m_frontend);
+    m_frontend = wrapUnique(new protocol::Frontend(channel));
     m_dispatcher = protocol::Dispatcher::create(channel);
 
     m_dispatcher->registerAgent((protocol::Backend::Debugger*)m_session->debuggerAgent());
@@ -86,14 +86,14 @@ void V8Inspector::disconnectFrontend()
     if (!m_frontend)
         return;
     m_dispatcher->clearFrontend();
-    m_dispatcher.clear();
+    m_dispatcher.reset();
 
     m_session->debuggerAgent()->clearFrontend();
     m_session->heapProfilerAgent()->clearFrontend();
     m_session->profilerAgent()->clearFrontend();
     m_session->runtimeAgent()->clearFrontend();
 
-    m_frontend.clear();
+    m_frontend.reset();
 }
 
 void V8Inspector::dispatchMessageFromFrontend(const String16& message)
@@ -121,6 +121,5 @@ bool V8Inspector::isExecutionAllowed()
 {
     return true;
 }
-
 
 } // namespace blink

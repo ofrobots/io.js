@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,7 @@
 #include "platform/v8_inspector/public/V8InspectorSessionClient.h"
 #include "platform/v8_inspector/public/V8InspectorSession.h"
 
-#include "wtf/OwnPtr.h"
+#include "wtf/PtrUtil.h"
 #include <v8.h>
 
 namespace blink {
@@ -21,15 +21,20 @@ class FrontendChannel;
 }
 
 class V8Debugger;
-class V8DebuggerAgent;
 class V8HeapProfilerAgent;
 class V8ProfilerAgent;
 
 class V8Inspector : public V8DebuggerClient, V8InspectorSessionClient {
-    WTF_MAKE_NONCOPYABLE(V8Inspector);
 public:
     V8Inspector(v8::Isolate*, v8::Local<v8::Context>);
+    ~V8Inspector();
 
+    // Transport interface.
+    void connectFrontend(protocol::FrontendChannel*);
+    void disconnectFrontend();
+    void dispatchMessageFromFrontend(const String16& message);
+
+private:
     void eventListeners(v8::Local<v8::Value>, V8EventListenerInfoList&) override;
     bool callingContextCanAccessContext(v8::Local<v8::Context> calling, v8::Local<v8::Context> target) override;
     String16 valueSubtype(v8::Local<v8::Value>) override;
@@ -52,10 +57,7 @@ public:
     {
         return v8::MaybeLocal<v8::Value>();
     }
-    void cancelTimer(int) override { }
     void reportMessageToConsole(v8::Local<v8::Context>, MessageType, MessageLevel, const String16& message, const v8::FunctionCallbackInfo<v8::Value>* arguments, unsigned skipArgumentCount, int maxStackSize) override { }
-
-    ~V8Inspector();
 
     // V8InspectorSessionClient
     void startInstrumenting() override { }
@@ -64,17 +66,14 @@ public:
     bool canExecuteScripts() override { return true; }
     void profilingStarted() override { }
     void profilingStopped() override { }
+    void startRepeatingTimer(double, TimerCallback, void* data) override { }
+    void cancelTimer(void* data) override { }
 
-    // Transport interface.
-    void connectFrontend(protocol::FrontendChannel*);
-    void disconnectFrontend();
-    void dispatchMessageFromFrontend(const String16& message);
-
-private:
-    OwnPtr<V8Debugger> m_debugger;
-    OwnPtr<V8InspectorSession> m_session;
-    OwnPtr<protocol::Dispatcher> m_dispatcher;
-    OwnPtr<protocol::Frontend> m_frontend;
+    std::unique_ptr<V8Debugger> m_debugger;
+    std::unique_ptr<V8InspectorSession> m_session;
+    std::unique_ptr<protocol::Dispatcher> m_dispatcher;
+    std::unique_ptr<protocol::Frontend> m_frontend;
+    std::unique_ptr<protocol::DictionaryValue> m_state;
 };
 
 }

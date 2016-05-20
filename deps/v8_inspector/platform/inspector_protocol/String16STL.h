@@ -34,36 +34,27 @@ public:
             m_impl[i] = characters[i];
     }
     String16(const UChar* characters, size_t size) : m_impl(characters, size) { }
-    ~String16() { }
 
     unsigned sizeInBytes() const { return m_impl.size() * sizeof(UChar); }
     const UChar* characters16() const { return m_impl.c_str(); }
     std::string utf8() const;
-    static String16 number(int i) { return String16(std::to_string(i).c_str()); }
-    static String16 fromDouble(double d) {
-        std::string tostring(std::to_string(d));
-        size_t decimal_point_pos = tostring.find_last_of('.');
-        size_t first_non_zero_pos = tostring.find_last_not_of('0');
-        if (decimal_point_pos == first_non_zero_pos) { // It's an integer
-            tostring.erase(decimal_point_pos);
-        }
-        return String16(tostring.c_str());
-    }
+    static String16 number(int i) { return String16(String16::intToString(i).c_str()); }
+    static String16 fromDouble(double d) { return String16(String16::doubleToString(d).c_str()); }
+    static String16 fromDoubleFixedPrecision(double d, int len) { return String16(String16::doubleToString(d).c_str()); }
+
     static double charactersToDouble(const UChar* characters, size_t length, bool* ok = 0)
     {
-        size_t idx;
         std::string str;
         str.resize(length);
         for (size_t i = 0; i < length; ++i)
             str[i] = static_cast<char>(characters[i]);
-        double result = stod(str, &idx);
-        if (ok)
-            *ok = idx == length;
-        return result;
-    }
 
-    double toDouble(bool* ok) {
-        return charactersToDouble(characters16(), length(), ok);
+        const char* buffer = str.c_str();
+        char* endptr;
+        double result = strtod(buffer, &endptr);
+        if (ok)
+            *ok = buffer + length == endptr;
+        return result;
     }
 
     String16 substring(unsigned pos, unsigned len = 0xFFFFFFFF) const
@@ -76,14 +67,16 @@ public:
     int toInt(bool* ok = 0) const
     {
         size_t length = m_impl.length();
-        size_t idx;
         std::string str;
         str.resize(length);
         for (size_t i = 0; i < length; ++i)
             str[i] = static_cast<char>(m_impl[i]);
-        int result = stoi(str, &idx);
+
+        const char* buffer = str.c_str();
+        char* endptr;
+        int result = strtol(buffer, &endptr, 10);
         if (ok)
-            *ok = idx == length;
+            *ok = buffer + length == endptr;
         return result;
     }
 
@@ -127,6 +120,8 @@ public:
     }
 
 private:
+    static std::string intToString(int i);
+    static std::string doubleToString(double d);
     // presubmit: allow wstring
     wstring m_impl;
     mutable bool has_hash = false;
@@ -164,7 +159,7 @@ public:
 
     void appendNumber(int i)
     {
-        m_impl = m_impl + String16(std::to_string(i).c_str()).impl();
+        m_impl = m_impl + String16::number(i).impl();
     }
 
     void append(const UChar* c, size_t length)
@@ -183,12 +178,6 @@ public:
         return String16(m_impl);
     }
 
-    template<size_t charactersCount>
-    void appendLiteral(const char (&characters)[charactersCount])
-    {
-        append(characters, charactersCount - 1);
-    }
-
     void reserveCapacity(unsigned newCapacity)
     {
     }
@@ -201,6 +190,7 @@ private:
 inline bool operator==(const String16& a, const String16& b) { return a.impl() == b.impl(); }
 inline bool operator!=(const String16& a, const String16& b) { return a.impl() != b.impl(); }
 inline bool operator==(const String16& a, const char* b) { return a.impl() == String16(b).impl(); }
+inline bool operator<(const String16& a, const String16& b) { return a.impl() < b.impl(); }
 
 inline String16 operator+(const String16& a, const char* b)
 {
@@ -238,15 +228,5 @@ public:
 } // namespace WTF
 
 using String = WTF::String;
-
-namespace std {
-template<>
-struct hash<String16> {
-std::size_t operator()(const String16& k) const
-{
-    return k.hash();
-}
-};
-}
 
 #endif // !defined(String16STL_h)

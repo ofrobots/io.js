@@ -6,6 +6,7 @@
 #define Maybe_h
 
 #include "platform/PlatformExport.h"
+#include "wtf/Assertions.h"
 
 namespace blink {
 namespace protocol {
@@ -16,14 +17,14 @@ template<typename T>
 class Maybe {
 public:
     Maybe() { }
-    Maybe(PassOwnPtr<T> value) : m_value(std::move(value)) { }
-    void operator=(PassOwnPtr<T> value) { m_value = std::move(value); }
-    T* fromJust() const { ASSERT(m_value); return m_value.get(); }
+    Maybe(std::unique_ptr<T> value) : m_value(std::move(value)) { }
+    void operator=(std::unique_ptr<T> value) { m_value = std::move(value); }
+    T* fromJust() const { DCHECK(m_value); return m_value.get(); }
     T* fromMaybe(T* defaultValue) const { return m_value ? m_value.get() : defaultValue; }
     bool isJust() const { return !!m_value; }
-    PassOwnPtr<T> takeJust() { ASSERT(m_value); return m_value.release(); }
+    std::unique_ptr<T> takeJust() { DCHECK(m_value); return m_value.release(); }
 private:
-    OwnPtr<T> m_value;
+    std::unique_ptr<T> m_value;
 };
 
 template<typename T>
@@ -32,10 +33,10 @@ public:
     MaybeBase() : m_isJust(false) { }
     MaybeBase(T value) : m_isJust(true), m_value(value) { }
     void operator=(T value) { m_value = value; m_isJust = true; }
-    T fromJust() const { ASSERT(m_isJust); return m_value; }
+    T fromJust() const { DCHECK(m_isJust); return m_value; }
     T fromMaybe(const T& defaultValue) const { return m_isJust ? m_value : defaultValue; }
     bool isJust() const { return m_isJust; }
-    T takeJust() { ASSERT(m_isJust); return m_value; }
+    T takeJust() { DCHECK(m_isJust); return m_value; }
 
 protected:
     bool m_isJust;
