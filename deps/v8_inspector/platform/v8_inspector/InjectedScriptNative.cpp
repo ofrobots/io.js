@@ -5,6 +5,7 @@
 #include "platform/v8_inspector/InjectedScriptNative.h"
 
 #include "platform/inspector_protocol/Values.h"
+#include "wtf/Assertions.h"
 
 namespace blink {
 
@@ -33,7 +34,7 @@ InjectedScriptNative* InjectedScriptNative::fromInjectedScriptHost(v8::Local<v8:
     v8::Local<v8::Context> context = isolate->GetCurrentContext();
     v8::Local<v8::Private> privateKey = v8::Private::ForApi(isolate, v8::String::NewFromUtf8(isolate, privateKeyName, v8::NewStringType::kInternalized).ToLocalChecked());
     v8::Local<v8::Value> value = injectedScriptObject->GetPrivate(context, privateKey).ToLocalChecked();
-    ASSERT(value->IsExternal());
+    DCHECK(value->IsExternal());
     v8::Local<v8::External> external = value.As<v8::External>();
     return static_cast<InjectedScriptNative*>(external->Value());
 }
@@ -43,7 +44,7 @@ int InjectedScriptNative::bind(v8::Local<v8::Value> value, const String16& group
     if (m_lastBoundObjectId <= 0)
         m_lastBoundObjectId = 1;
     int id = m_lastBoundObjectId++;
-    m_idToWrappedObject.set(id, adoptPtr(new v8::Global<v8::Value>(m_isolate, value)));
+    m_idToWrappedObject.set(id, wrapUnique(new v8::Global<v8::Value>(m_isolate, value)));
     addObjectToGroup(id, groupName);
     return id;
 }

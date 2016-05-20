@@ -44,7 +44,7 @@ public:
         }
 
         T* m_impl;
-        OwnPtr<T> m_implOwn;
+        std::unique_ptr<T> m_implOwn;
 
     private:
         static void weakCallback(const v8::WeakCallbackInfo<WeakCallbackData>& info)

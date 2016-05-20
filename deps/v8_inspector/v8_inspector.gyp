@@ -13,7 +13,6 @@
       'type': '<(component)',
 
       'dependencies': [
-        'deps/wtf/wtf/wtf.gyp:wtf',
         'platform/inspector_protocol/protocol.gyp:protocol_sources',
         'platform/v8_inspector/v8_inspector.gyp:inspector_injected_script',
         'platform/v8_inspector/v8_inspector.gyp:inspector_debugger_script',
@@ -23,6 +22,7 @@
       ],
       'include_dirs': [
         '.',
+        'deps/wtf',
         '../v8/include',
         '../v8',
         '<(SHARED_INTERMEDIATE_DIR)/blink',

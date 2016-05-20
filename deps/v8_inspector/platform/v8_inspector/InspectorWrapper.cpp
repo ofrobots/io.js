@@ -6,6 +6,7 @@
 
 #include "platform/v8_inspector/V8Compat.h"
 #include "platform/v8_inspector/public/V8DebuggerClient.h"
+#include "wtf/Assertions.h"
 
 #include <v8-debug.h>
 
@@ -49,7 +50,7 @@ v8::Local<v8::Object> InspectorWrapperBase::createWrapper(v8::Local<v8::Function
 void* InspectorWrapperBase::unwrap(v8::Local<v8::Context> context, v8::Local<v8::Object> object, const char* name)
 {
     v8::Isolate* isolate = context->GetIsolate();
-    ASSERT(context != v8::Debug::GetDebugContext(isolate));
+    DCHECK(context != v8::Debug::GetDebugContext(isolate));
 
     v8::Local<v8::Private> privateKey = v8::Private::ForApi(isolate, v8::String::NewFromUtf8(isolate, name, v8::NewStringType::kInternalized).ToLocalChecked());
 
