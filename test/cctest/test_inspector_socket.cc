@@ -314,9 +314,13 @@ TEST_F(InspectorSocketTest, ReadsAndWritesInspectorMessage) {
 void expect_data(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
   inspector_socket_t *inspector = (inspector_socket_t *)stream->data;
   const char **next_line = (const char **)inspector->data;
-  EXPECT_STREQ(*next_line, buf->base);
+  char *actual_line = (char*) malloc(nread + 1);
+  memcpy(actual_line, buf->base, nread);
+  actual_line[nread] = '\0';
+  EXPECT_STREQ(*next_line, actual_line);
   inspector->data = next_line + 1;
   free(buf->base);
+  free(actual_line);
 }
 
 TEST_F(InspectorSocketTest, BufferEdgeCases) {
