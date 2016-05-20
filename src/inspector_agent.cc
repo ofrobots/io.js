@@ -67,7 +67,7 @@ void DisconnectAndDisposeIO(inspector_socket_t* socket) {
 
 void OnBufferAlloc(uv_handle_t* handle, size_t len, uv_buf_t* buf) {
   if (len > 0) {
-    buf->base = reinterpret_cast<char*>(malloc(len));
+    buf->base = static_cast<char*>(malloc(len));
     CHECK_NE(buf->base, nullptr);
   }
   buf->len = len;
@@ -98,8 +98,8 @@ void SendVersionResponse(inspector_socket_t* socket) {
       "} ]";
   char buffer[sizeof(VERSION_RESPONSE_TEMPLATE) + 128];
   size_t len = snprintf(buffer, sizeof(buffer),
-                 VERSION_RESPONSE_TEMPLATE, NODE_VERSION);
-  ASSERT(len < sizeof(buffer));
+                        VERSION_RESPONSE_TEMPLATE, NODE_VERSION);
+  ASSERT_LT(len, sizeof(buffer));
   SendHttpResponse(socket, buffer, len);
 }
 
@@ -120,9 +120,16 @@ void SendTargentsListResponse(inspector_socket_t* socket) {
   char title[2048];  // uv_get_process_title trims the title if too long
   int err = uv_get_process_title(title, sizeof(title));
   ASSERT_EQ(0, err);
+  char* c = title;
+  while (!c) {
+    if (*c < ' ' || *c == '\"') {
+      *c = '_';
+    }
+    c++;
+  }
   size_t len = snprintf(buffer, sizeof(buffer), LIST_RESPONSE_TEMPLATE,
                         getpid(), title, DEVTOOLS_PATH);
-  ASSERT(len < sizeof(buffer));
+  ASSERT_LT(len, sizeof(buffer));
   SendHttpResponse(socket, buffer, len);
 }
 
@@ -133,8 +140,8 @@ bool RespondToGet(inspector_socket_t* socket, const char* path) {
   const char PATH_ACTIVATE[] = "/json/activate/";
   if (!strncmp(PATH_VERSION, path, sizeof(PATH_VERSION))) {
     SendVersionResponse(socket);
-  } else if (!strncmp(PATH_LIST, path, sizeof(PATH_LIST))
-             || !strncmp(PATH, path, sizeof(PATH)))  {
+  } else if (!strncmp(PATH_LIST, path, sizeof(PATH_LIST)) ||
+             !strncmp(PATH, path, sizeof(PATH)))  {
     SendTargentsListResponse(socket);
   } else if (!strncmp(path, PATH_ACTIVATE, sizeof(PATH_ACTIVATE) - 1) &&
              atoi(path + (sizeof(PATH_ACTIVATE) - 1)) == getpid()) {
@@ -155,7 +162,7 @@ using blink::protocol::DictionaryValue;
 using blink::protocol::String16;
 
 void InterruptCallback(v8::Isolate*, void* agent) {
-  reinterpret_cast<Agent*>(agent)->PostMessages();
+  static_cast<Agent*>(agent)->PostMessages();
 }
 
 class DispatchOnInspectorBackendTask : public v8::Task {
@@ -235,7 +242,7 @@ class V8NodeInspector : public blink::V8Inspector {
         terminated_(false),
         running_nested_loop_(false) {}
 
-  void runMessageLoopOnPause(int contextGroupId) override {
+  void runMessageLoopOnPause(int context_group_id) override {
     if (running_nested_loop_)
       return;
     terminated_ = false;
@@ -310,9 +317,7 @@ void Agent::Start(v8::Platform* platform, int port, bool wait) {
   port_ = port;
   wait_ = wait;
 
-  err = uv_thread_create(&thread_,
-                         reinterpret_cast<uv_thread_cb>(Agent::ThreadCbIO),
-                         this);
+  err = uv_thread_create(&thread_, Agent::ThreadCbIO, this);
   CHECK_EQ(err, 0);
   uv_sem_wait(&start_sem_);
 
@@ -348,17 +353,17 @@ void Agent::WaitForDisconnect() {
 }
 
 // static
-void Agent::ThreadCbIO(Agent* agent) {
-  agent->WorkerRunIO();
+void Agent::ThreadCbIO(void* agent) {
+  static_cast<Agent*>(agent)->WorkerRunIO();
 }
 
 // static
 void Agent::OnSocketConnectionIO(uv_stream_t* server, int status) {
   if (status == 0) {
-    inspector_socket_t* socket = reinterpret_cast<inspector_socket_t*>(
-        malloc(sizeof(inspector_socket_t)));
+    inspector_socket_t* socket =
+        static_cast<inspector_socket_t*>(malloc(sizeof(*socket)));
     ASSERT_NE(nullptr, socket);
-    memset(socket, 0, sizeof(inspector_socket_t));
+    memset(socket, 0, sizeof(*socket));
     socket->data = server->data;
     if (inspector_accept(server, socket, Agent::OnInspectorHandshakeIO) != 0) {
       free(socket);
@@ -368,9 +373,9 @@ void Agent::OnSocketConnectionIO(uv_stream_t* server, int status) {
 
 // static
 bool Agent::OnInspectorHandshakeIO(inspector_socket_t* socket,
-                                 enum inspector_handshake_event state,
-                                 const char* path) {
-  Agent* agent = reinterpret_cast<Agent*>(socket->data);
+                                   enum inspector_handshake_event state,
+                                   const char* path) {
+  Agent* agent = static_cast<Agent*>(socket->data);
   switch (state) {
   case kInspectorHandshakeHttpGet:
     return RespondToGet(socket, path);
@@ -382,7 +387,7 @@ bool Agent::OnInspectorHandshakeIO(inspector_socket_t* socket,
   case kInspectorHandshakeFailed:
     return false;
   default:
-    ASSERT(false);
+    UNREACHABLE();
   }
 }
 
@@ -390,12 +395,11 @@ bool Agent::OnInspectorHandshakeIO(inspector_socket_t* socket,
 void Agent::OnRemoteDataIO(uv_stream_t* stream,
                            ssize_t read,
                            const uv_buf_t* b) {
-  inspector_socket_t* socket =
-      reinterpret_cast<inspector_socket_t*>(stream->data);
-  Agent* agent = reinterpret_cast<Agent*>(socket->data);
+  inspector_socket_t* socket = static_cast<inspector_socket_t*>(stream->data);
+  Agent* agent = static_cast<Agent*>(socket->data);
   if (read > 0) {
     uv_mutex_lock(&agent->queue_lock_);
-    blink::protocol::String16 str(b->base, read - 1);
+    blink::protocol::String16 str(b->base, read);
     agent->message_queue_.push_back(str);
     uv_mutex_unlock(&agent->queue_lock_);
     free(b->base);
@@ -435,7 +439,7 @@ void Agent::OnRemoteDataIO(uv_stream_t* stream,
 
 // static
 void Agent::WriteCbIO(uv_async_t* async) {
-  auto req = reinterpret_cast<AsyncWriteRequest*>(async->data);
+  auto req = static_cast<AsyncWriteRequest*>(async->data);
   req->perform();
   delete req;
   uv_close(reinterpret_cast<uv_handle_t*>(async), DisposeAsyncCb);
@@ -448,7 +452,7 @@ void Agent::WorkerRunIO() {
   uv_tcp_init(&child_loop_, &server);
   uv_ip4_addr("0.0.0.0", port_, &addr);
   server.data = this;
-  err = uv_tcp_bind(&server, (const struct sockaddr*)&addr, 0);
+  err = uv_tcp_bind(&server, reinterpret_cast<const struct sockaddr*>(&addr), 0);
   if (err == 0) {
     err = uv_listen(reinterpret_cast<uv_stream_t*>(&server), 0,
                     OnSocketConnectionIO);
@@ -457,14 +461,14 @@ void Agent::WorkerRunIO() {
     PrintDebuggerReadyMessage(port_);
   } else {
     fprintf(stderr, "Unable to open devtools socket: %s\n", uv_strerror(err));
-    assert(false);
+    ABORT();
   }
   if (!wait_) {
     uv_sem_post(&start_sem_);
   }
   uv_run(&child_loop_, UV_RUN_DEFAULT);
   uv_close(reinterpret_cast<uv_handle_t*>(&server), nullptr);
-  uv_run(&child_loop_, UV_RUN_NOWAIT);
+  uv_run(&child_loop_, UV_RUN_DEFAULT);
 }
 
 void Agent::OnInspectorConnectionIO(inspector_socket_t* socket) {
@@ -509,11 +513,12 @@ void Agent::SetConnected(bool connected) {
 }
 
 void Agent::Write(const String16& message) {
-  uv_async_t* async = reinterpret_cast<uv_async_t*>(malloc(sizeof(uv_async_t)));
-  ASSERT_NE(async, nullptr);
-  uv_async_init(&child_loop_, async, Agent::WriteCbIO);
+  uv_async_t* async = static_cast<uv_async_t*>(malloc(sizeof(*async)));
+  CHECK_NE(async, nullptr);
+  int err = uv_async_init(&child_loop_, async, Agent::WriteCbIO);
+  CHECK_EQ(0, err);
   async->data = new AsyncWriteRequest(this, message);
-  ASSERT_EQ(0, uv_async_send(async));
+  CHECK_EQ(0, uv_async_send(async));
 }
 
 }  // namespace debugger

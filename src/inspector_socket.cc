@@ -13,8 +13,6 @@
 #define DUMP_READS 0
 #define DUMP_WRITES 0
 
-#define MAX(a, b) ((a) > (b) ? (a) : (b))
-
 static const char CLOSE_FRAME[] = {'\x88', '\x00'};
 
 struct http_parsing_state_s {
@@ -50,7 +48,7 @@ static void dump_hex(const char* buf, size_t len) {
   while (ptr < end) {
     cptr = ptr;
     for (i = 0; i < 16 && ptr < end; i++) {
-      printf("%2.2X  ", *((unsigned char*) ptr++));
+      printf("%2.2X  ", *(ptr++));
     }
     for (i = 72 - (i * 4); i > 0; i--) {
       printf(" ");
@@ -150,25 +148,19 @@ const size_t kTwoBytePayloadLengthField = 126;
 const size_t kEightBytePayloadLengthField = 127;
 const size_t kMaskingKeyWidthInBytes = 4;
 
-static void encode_frame_hybi17(const char* message,
-                                size_t data_length,
-                                int masking_key,
-                                bool compressed,
-                                char** output,
-                                size_t* output_len) {
+static std::vector<char> encode_frame_hybi17(const char* message,
+                                             size_t data_length) {
   std::vector<char> frame;
   OpCode op_code = kOpCodeText;
-  int reserved1 = compressed ? kReserved1Bit : 0;
-  frame.push_back(kFinalBit | op_code | reserved1);
-  char mask_key_bit = masking_key != 0 ? kMaskBit : 0;
+  frame.push_back(kFinalBit | op_code);
   if (data_length <= kMaxSingleBytePayloadLength) {
-    frame.push_back(static_cast<char>(data_length) | mask_key_bit);
+    frame.push_back(static_cast<char>(data_length));
   } else if (data_length <= 0xFFFF) {
-    frame.push_back(kTwoBytePayloadLengthField | mask_key_bit);
+    frame.push_back(kTwoBytePayloadLengthField);
     frame.push_back((data_length & 0xFF00) >> 8);
     frame.push_back(data_length & 0xFF);
   } else {
-    frame.push_back(kEightBytePayloadLengthField | mask_key_bit);
+    frame.push_back(kEightBytePayloadLengthField);
     char extended_payload_length[8];
     size_t remaining = data_length;
     // Fill the length into extended_payload_length in the network byte order.
@@ -178,31 +170,19 @@ static void encode_frame_hybi17(const char* message,
     }
     frame.insert(frame.end(), extended_payload_length,
                  extended_payload_length + 8);
-    assert(!remaining);
+    ASSERT_NE(0, remaining);
   }
-
-  if (masking_key != 0) {
-    const char* mask_bytes = reinterpret_cast<char*>(&masking_key);
-    frame.insert(frame.end(), mask_bytes, mask_bytes + 4);
-    for (size_t i = 0; i < data_length; ++i)  // Mask the payload.
-      frame.push_back(message[i] ^ mask_bytes[i % kMaskingKeyWidthInBytes]);
-  } else {
-    frame.insert(frame.end(), message, message + data_length);
-  }
-  *output = reinterpret_cast<char*>(malloc(frame.size() + 1));
-  memcpy(*output, &frame[0], frame.size());
-  (*output)[frame.size()] = '\0';
-  *output_len = frame.size();
+  frame.insert(frame.end(), message, message + data_length);
+  return frame;
 }
 
 static ws_decode_result decode_frame_hybi17(const char* buffer_begin,
                                             size_t data_length,
                                             bool client_frame,
                                             int* bytes_consumed,
-                                            char** output,
+                                            std::vector<char>* output,
                                             bool* compressed) {
   *bytes_consumed = 0;
-  *output = nullptr;
   if (data_length < 2)
     return FRAME_INCOMPLETE;
 
@@ -247,9 +227,10 @@ static ws_decode_result decode_frame_hybi17(const char* buffer_begin,
     int extended_payload_length_size;
     if (payload_length64 == kTwoBytePayloadLengthField) {
       extended_payload_length_size = 2;
-    } else {
-      assert(payload_length64 == kEightBytePayloadLengthField);
+    } else if (payload_length64 == kEightBytePayloadLengthField) {
       extended_payload_length_size = 8;
+    } else {
+      return FRAME_ERROR;
     }
     if (buffer_end - p < extended_payload_length_size)
       return FRAME_INCOMPLETE;
@@ -260,33 +241,25 @@ static ws_decode_result decode_frame_hybi17(const char* buffer_begin,
     }
   }
 
-  size_t actual_masking_key_length = masked ? kMaskingKeyWidthInBytes : 0;
   static const uint64_t max_payload_length = 0x7FFFFFFFFFFFFFFFull;
-  static size_t max_length = SIZE_MAX;
+  static const size_t max_length = SIZE_MAX;
   if (payload_length64 > max_payload_length ||
-      payload_length64 + actual_masking_key_length > max_length) {
+      payload_length64 > max_length - kMaskingKeyWidthInBytes) {
     // WebSocket frame length too large.
     return FRAME_ERROR;
   }
   size_t payload_length = static_cast<size_t>(payload_length64);
 
-  size_t total_length = actual_masking_key_length + payload_length;
-  if (static_cast<size_t>(buffer_end - p) < total_length)
+  if (data_length - kMaskingKeyWidthInBytes < payload_length)
     return FRAME_INCOMPLETE;
 
-  // Add 1 sizeof(char) for 0 terminator
-  *output = reinterpret_cast<char*>(malloc(payload_length + 1));
-  if (masked) {
-    const char* masking_key = p;
-    char* payload = const_cast<char*>(p + kMaskingKeyWidthInBytes);
-    for (size_t i = 0; i < payload_length; ++i)  // Unmask the payload.
-      (*output)[i] = payload[i] ^ masking_key[i % kMaskingKeyWidthInBytes];
-  } else {
-    strncpy(*output, p, payload_length);
-  }
-  (*output)[payload_length] = '\0';
+  const char* masking_key = p;
+  const char* payload = p + kMaskingKeyWidthInBytes;
+  for (size_t i = 0; i < payload_length; ++i)  // Unmask the payload.
+    output->insert(output->end(),
+                   payload[i] ^ masking_key[i % kMaskingKeyWidthInBytes]);
 
-  size_t pos = p + actual_masking_key_length + payload_length - buffer_begin;
+  size_t pos = p + kMaskingKeyWidthInBytes + payload_length - buffer_begin;
   *bytes_consumed = pos;
   return closed ? FRAME_CLOSE : FRAME_OK;
 }
@@ -329,7 +302,7 @@ static void close_frame_received(inspector_socket_t* inspector) {
 
 static int parse_ws_frames(inspector_socket_t* inspector, size_t len) {
   int bytes_consumed = 0;
-  char* output = nullptr;
+  std::vector<char> output;
   bool compressed = false;
 
   ws_decode_result r =  decode_frame_hybi17(inspector->buffer,
@@ -347,15 +320,14 @@ static int parse_ws_frames(inspector_socket_t* inspector, size_t len) {
   } else if (r == FRAME_OK && inspector->ws_state->alloc_cb
              && inspector->ws_state->read_cb) {
     uv_buf_t buffer;
-    size_t len = strlen(output) + 1;
+    size_t len = output.size();
     inspector->ws_state->alloc_cb(
         reinterpret_cast<uv_handle_t*>(&inspector->client),
         len, &buffer);
     CHECK_GE(len, buffer.len);
-    strncpy(buffer.base, output, len);
+    memcpy(buffer.base, &output[0], len);
     invoke_read_callback(inspector, len, &buffer);
   }
-  free(output);
   return bytes_consumed;
 }
 
@@ -377,9 +349,8 @@ static void prepare_buffer(uv_handle_t* stream, size_t len, uv_buf_t* buf) {
   inspector->data_len += len;
 }
 
-
 static void websockets_data_cb(uv_stream_t* stream, ssize_t nread,
-    const uv_buf_t* buf) {
+                               const uv_buf_t* buf) {
   inspector_socket_t* inspector =
       reinterpret_cast<inspector_socket_t*>(stream->data);
   if (nread < 0 || nread == UV_EOF) {
@@ -732,11 +703,8 @@ int inspector_accept(uv_stream_t* server, inspector_socket_t* inspector,
 void inspector_write(inspector_socket_t* inspector, const char* data,
                      size_t len) {
   if (inspector->ws_mode) {
-    char* output;
-    size_t output_len;
-    encode_frame_hybi17(data, len, 0, false, &output, &output_len);
-    write_to_client(inspector, output, output_len);
-    free(output);
+    std::vector<char> output = encode_frame_hybi17(data, len);
+    write_to_client(inspector, &output[0], output.size());
   } else {
     write_to_client(inspector, data, len);
   }

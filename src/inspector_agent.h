@@ -44,7 +44,7 @@ class Agent {
   void WaitForDisconnect();
 
  protected:
-  static void ThreadCbIO(Agent* agent);
+  static void ThreadCbIO(void* agent);
   static void OnSocketConnectionIO(uv_stream_t* server, int status);
   static bool OnInspectorHandshakeIO(inspector_socket_t* socket,
                                      enum inspector_handshake_event state,
