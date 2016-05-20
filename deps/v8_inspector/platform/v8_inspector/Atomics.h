@@ -14,9 +14,7 @@
 namespace blink {
 
 #if COMPILER(MSVC)
-
 inline int atomicIncrement(int volatile* addend) { return InterlockedIncrement(reinterpret_cast<long volatile*>(addend)); }
-
 #else
 
 inline int atomicAdd(int volatile* addend, int increment) { return __sync_add_and_fetch(addend, increment); }

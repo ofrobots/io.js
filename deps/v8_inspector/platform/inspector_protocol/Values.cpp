@@ -6,6 +6,7 @@
 
 #include "platform/inspector_protocol/Parser.h"
 #include "platform/inspector_protocol/String16.h"
+#include "wtf/Assertions.h"
 #include <cmath>
 
 namespace blink {
@@ -100,11 +101,11 @@ String16 Value::toJSONString() const
 
 void Value::writeJSON(String16Builder* output) const
 {
-    ASSERT(m_type == TypeNull);
+    DCHECK(m_type == TypeNull);
     output->append(nullString, 4);
 }
 
-PassOwnPtr<Value> Value::clone() const
+std::unique_ptr<Value> Value::clone() const
 {
     return Value::null();
 }
@@ -135,7 +136,7 @@ bool FundamentalValue::asNumber(int* output) const
 
 void FundamentalValue::writeJSON(String16Builder* output) const
 {
-    ASSERT(type() == TypeBoolean || type() == TypeNumber);
+    DCHECK(type() == TypeBoolean || type() == TypeNumber);
     if (type() == TypeBoolean) {
         if (m_boolValue)
             output->append(trueString, 4);
@@ -150,7 +151,7 @@ void FundamentalValue::writeJSON(String16Builder* output) const
     }
 }
 
-PassOwnPtr<Value> FundamentalValue::clone() const
+std::unique_ptr<Value> FundamentalValue::clone() const
 {
     return type() == TypeNumber ? FundamentalValue::create(m_doubleValue) : FundamentalValue::create(m_boolValue);
 }
@@ -163,11 +164,11 @@ bool StringValue::asString(String16* output) const
 
 void StringValue::writeJSON(String16Builder* output) const
 {
-    ASSERT(type() == TypeString);
+    DCHECK(type() == TypeString);
     doubleQuoteStringForJSON(m_stringValue, output);
 }
 
-PassOwnPtr<Value> StringValue::clone() const
+std::unique_ptr<Value> StringValue::clone() const
 {
     return StringValue::create(m_stringValue);
 }
@@ -191,23 +192,23 @@ void DictionaryValue::setString(const String16& name, const String16& value)
     setValue(name, StringValue::create(value));
 }
 
-void DictionaryValue::setValue(const String16& name, PassOwnPtr<Value> value)
+void DictionaryValue::setValue(const String16& name, std::unique_ptr<Value> value)
 {
-    ASSERT(value);
+    DCHECK(value);
     if (m_data.set(name, std::move(value)))
         m_order.append(name);
 }
 
-void DictionaryValue::setObject(const String16& name, PassOwnPtr<DictionaryValue> value)
+void DictionaryValue::setObject(const String16& name, std::unique_ptr<DictionaryValue> value)
 {
-    ASSERT(value);
+    DCHECK(value);
     if (m_data.set(name, std::move(value)))
         m_order.append(name);
 }
 
-void DictionaryValue::setArray(const String16& name, PassOwnPtr<ListValue> value)
+void DictionaryValue::setArray(const String16& name, std::unique_ptr<ListValue> value)
 {
-    ASSERT(value);
+    DCHECK(value);
     if (m_data.set(name, std::move(value)))
         m_order.append(name);
 }
@@ -282,7 +283,7 @@ void DictionaryValue::writeJSON(String16Builder* output) const
     output->append('{');
     for (size_t i = 0; i < m_order.size(); ++i) {
         Dictionary::const_iterator it = m_data.find(m_order[i]);
-        ASSERT_WITH_SECURITY_IMPLICATION(it != m_data.end());
+        CHECK(it != m_data.end());
         if (i)
             output->append(',');
         doubleQuoteStringForJSON(it->first, output);
@@ -292,16 +293,16 @@ void DictionaryValue::writeJSON(String16Builder* output) const
     output->append('}');
 }
 
-PassOwnPtr<Value> DictionaryValue::clone() const
+std::unique_ptr<Value> DictionaryValue::clone() const
 {
-    OwnPtr<DictionaryValue> result = DictionaryValue::create();
+    std::unique_ptr<DictionaryValue> result = DictionaryValue::create();
     for (size_t i = 0; i < m_order.size(); ++i) {
         String16 key = m_order[i];
         Value* value = m_data.get(key);
-        ASSERT(value);
+        DCHECK(value);
         result->setValue(key, value->clone());
     }
-    return result.release();
+    return std::move(result);
 }
 
 DictionaryValue::DictionaryValue()
@@ -316,7 +317,7 @@ ListValue::~ListValue()
 void ListValue::writeJSON(String16Builder* output) const
 {
     output->append('[');
-    for (Vector<OwnPtr<protocol::Value>>::const_iterator it = m_data.begin(); it != m_data.end(); ++it) {
+    for (Vector<std::unique_ptr<protocol::Value>>::const_iterator it = m_data.begin(); it != m_data.end(); ++it) {
         if (it != m_data.begin())
             output->append(',');
         (*it)->writeJSON(output);
@@ -324,12 +325,12 @@ void ListValue::writeJSON(String16Builder* output) const
     output->append(']');
 }
 
-PassOwnPtr<Value> ListValue::clone() const
+std::unique_ptr<Value> ListValue::clone() const
 {
-    OwnPtr<ListValue> result = ListValue::create();
-    for (Vector<OwnPtr<protocol::Value>>::const_iterator it = m_data.begin(); it != m_data.end(); ++it)
+    std::unique_ptr<ListValue> result = ListValue::create();
+    for (Vector<std::unique_ptr<protocol::Value>>::const_iterator it = m_data.begin(); it != m_data.end(); ++it)
         result->pushValue((*it)->clone());
-    return result.release();
+    return std::move(result);
 }
 
 ListValue::ListValue()
@@ -337,16 +338,16 @@ ListValue::ListValue()
 {
 }
 
-void ListValue::pushValue(PassOwnPtr<protocol::Value> value)
+void ListValue::pushValue(std::unique_ptr<protocol::Value> value)
 {
-    ASSERT(value);
+    DCHECK(value);
     m_data.append(std::move(value));
 }
 
 protocol::Value* ListValue::at(size_t index)
 {
-    ASSERT_WITH_SECURITY_IMPLICATION(index < m_data.size());
-    return m_data[index].get();
+    CHECK(index < m_data.size());
+    return m_data[index];
 }
 
 } // namespace protocol

@@ -18,12 +18,12 @@ namespace protocol {
 template<typename T>
 class ArrayBase {
 public:
-    static PassOwnPtr<Array<T>> create()
+    static std::unique_ptr<Array<T>> create()
     {
-        return adoptPtr(new Array<T>());
+        return wrapUnique(new Array<T>());
     }
 
-    static PassOwnPtr<Array<T>> parse(protocol::Value* value, ErrorSupport* errors)
+    static std::unique_ptr<Array<T>> parse(protocol::Value* value, ErrorSupport* errors)
     {
         protocol::ListValue* array = ListValue::cast(value);
         if (!array) {
@@ -31,7 +31,7 @@ public:
             return nullptr;
         }
         errors->push();
-        OwnPtr<Array<T>> result = adoptPtr(new Array<T>());
+        std::unique_ptr<Array<T>> result(new Array<T>());
         for (size_t i = 0; i < array->size(); ++i) {
             errors->setName(String16::number(i));
             T item = FromValue<T>::parse(array->at(i), errors);
@@ -40,7 +40,7 @@ public:
         errors->pop();
         if (errors->hasErrors())
             return nullptr;
-        return result.release();
+        return result;
     }
 
     void addItem(const T& value)
@@ -58,12 +58,12 @@ public:
         return m_vector[index];
     }
 
-    PassOwnPtr<protocol::ListValue> serialize()
+    std::unique_ptr<protocol::ListValue> serialize()
     {
-        OwnPtr<protocol::ListValue> result = ListValue::create();
+        std::unique_ptr<protocol::ListValue> result = ListValue::create();
         for (auto& item : m_vector)
             result->pushValue(toValue(item));
-        return result.release();
+        return result;
     }
 
 private:
@@ -79,32 +79,32 @@ template<> class Array<bool> : public ArrayBase<bool> {};
 template<typename T>
 class Array {
 public:
-    static PassOwnPtr<Array<T>> create()
+    static std::unique_ptr<Array<T>> create()
     {
-        return adoptPtr(new Array<T>());
+        return wrapUnique(new Array<T>());
     }
 
-    static PassOwnPtr<Array<T>> parse(protocol::Value* value, ErrorSupport* errors)
+    static std::unique_ptr<Array<T>> parse(protocol::Value* value, ErrorSupport* errors)
     {
         protocol::ListValue* array = ListValue::cast(value);
         if (!array) {
             errors->addError("array expected");
             return nullptr;
         }
-        OwnPtr<Array<T>> result = adoptPtr(new Array<T>());
+        std::unique_ptr<Array<T>> result = wrapUnique(new Array<T>());
         errors->push();
         for (size_t i = 0; i < array->size(); ++i) {
             errors->setName(String16::number(i));
-            OwnPtr<T> item = FromValue<T>::parse(array->at(i), errors);
-            result->m_vector.append(item.release());
+            std::unique_ptr<T> item = FromValue<T>::parse(array->at(i), errors);
+            result->m_vector.append(std::move(item));
         }
         errors->pop();
         if (errors->hasErrors())
             return nullptr;
-        return result.release();
+        return result;
     }
 
-    void addItem(PassOwnPtr<T> value)
+    void addItem(std::unique_ptr<T> value)
     {
         m_vector.append(std::move(value));
     }
@@ -116,19 +116,19 @@ public:
 
     T* get(size_t index)
     {
-        return m_vector[index].get();
+        return m_vector[index];
     }
 
-    PassOwnPtr<protocol::ListValue> serialize()
+    std::unique_ptr<protocol::ListValue> serialize()
     {
-        OwnPtr<protocol::ListValue> result = ListValue::create();
+        std::unique_ptr<protocol::ListValue> result = ListValue::create();
         for (auto& item : m_vector)
-            result->pushValue(toValue(item.get()));
-        return result.release();
+            result->pushValue(toValue(item));
+        return result;
     }
 
 private:
-    protocol::Vector<OwnPtr<T>> m_vector;
+    protocol::Vector<std::unique_ptr<T>> m_vector;
 };
 
 } // namespace platform

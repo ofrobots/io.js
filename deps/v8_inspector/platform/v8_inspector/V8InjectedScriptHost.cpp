@@ -29,10 +29,10 @@ void setFunctionProperty(v8::Local<v8::Context> context, v8::Local<v8::Object> o
 
 V8DebuggerImpl* unwrapDebugger(const v8::FunctionCallbackInfo<v8::Value>& info)
 {
-    ASSERT(!info.Data().IsEmpty());
-    ASSERT(info.Data()->IsExternal());
+    DCHECK(!info.Data().IsEmpty());
+    DCHECK(info.Data()->IsExternal());
     V8DebuggerImpl* debugger = static_cast<V8DebuggerImpl*>(info.Data().As<v8::External>()->Value());
-    ASSERT(debugger);
+    DCHECK(debugger);
     return debugger;
 }
 
@@ -54,6 +54,7 @@ v8::Local<v8::Object> V8InjectedScriptHost::create(v8::Local<v8::Context> contex
     setFunctionProperty(context, injectedScriptHost, "setNonEnumProperty", V8InjectedScriptHost::setNonEnumPropertyCallback, debuggerExternal);
     setFunctionProperty(context, injectedScriptHost, "bind", V8InjectedScriptHost::bindCallback, debuggerExternal);
     setFunctionProperty(context, injectedScriptHost, "proxyTargetValue", V8InjectedScriptHost::proxyTargetValueCallback, debuggerExternal);
+    setFunctionProperty(context, injectedScriptHost, "prototype", V8InjectedScriptHost::prototypeCallback, debuggerExternal);
     return injectedScriptHost;
 }
 
@@ -197,11 +198,11 @@ void V8InjectedScriptHost::getEventListenersCallback(const v8::FunctionCallbackI
 void V8InjectedScriptHost::suppressWarningsAndCallFunctionCallback(const v8::FunctionCallbackInfo<v8::Value>& info)
 {
     if (info.Length() < 2 || info.Length() > 3 || !info[0]->IsFunction()) {
-        ASSERT_NOT_REACHED();
+        NOTREACHED();
         return;
     }
     if (info.Length() > 2 && (!info[2]->IsArray() && !info[2]->IsUndefined())) {
-        ASSERT_NOT_REACHED();
+        NOTREACHED();
         return;
     }
 
@@ -210,13 +211,13 @@ void V8InjectedScriptHost::suppressWarningsAndCallFunctionCallback(const v8::Fun
 
     v8::Local<v8::Function> function = info[0].As<v8::Function>();
     v8::Local<v8::Value> receiver = info[1];
-    OwnPtr<v8::Local<v8::Value>[]> argv = nullptr;
+    std::unique_ptr<v8::Local<v8::Value>[]> argv = nullptr;
     size_t argc = 0;
 
     if (info.Length() > 2 && info[2]->IsArray()) {
         v8::Local<v8::Array> arguments = info[2].As<v8::Array>();
         argc = arguments->Length();
-        argv = adoptArrayPtr(new v8::Local<v8::Value>[argc]);
+        argv.reset(new v8::Local<v8::Value>[argc]);
         for (size_t i = 0; i < argc; ++i) {
             if (!arguments->Get(context, i).ToLocal(&argv[i]))
                 return;
@@ -241,7 +242,8 @@ void V8InjectedScriptHost::setNonEnumPropertyCallback(const v8::FunctionCallback
 
     v8::Local<v8::Object> object = info[0].As<v8::Object>();
     v8::Maybe<bool> success = object->DefineOwnProperty(info.GetIsolate()->GetCurrentContext(), info[1].As<v8::String>(), info[2], v8::DontEnum);
-    ASSERT_UNUSED(!success.IsNothing(), !success.IsNothing());
+    USE(success);
+    DCHECK(!success.IsNothing());
 }
 
 void V8InjectedScriptHost::bindCallback(const v8::FunctionCallbackInfo<v8::Value>& info)
@@ -261,7 +263,7 @@ void V8InjectedScriptHost::bindCallback(const v8::FunctionCallbackInfo<v8::Value
 void V8InjectedScriptHost::proxyTargetValueCallback(const v8::FunctionCallbackInfo<v8::Value>& info)
 {
     if (info.Length() != 1 || !info[0]->IsProxy()) {
-        ASSERT_NOT_REACHED();
+        NOTREACHED();
         return;
     }
     v8::Local<v8::Object> target = info[0].As<v8::Proxy>();
@@ -270,14 +272,15 @@ void V8InjectedScriptHost::proxyTargetValueCallback(const v8::FunctionCallbackIn
     info.GetReturnValue().Set(target);
 }
 
+void V8InjectedScriptHost::prototypeCallback(const v8::FunctionCallbackInfo<v8::Value>& info)
+{
+    DCHECK(info.Length() > 0 && info[0]->IsObject());
+    info.GetReturnValue().Set(info[0].As<v8::Object>()->GetPrototype());
+}
+
 v8::Local<v8::Private> V8Debugger::scopeExtensionPrivate(v8::Isolate* isolate)
 {
     return v8::Private::ForApi(isolate, toV8StringInternalized(isolate, "V8Debugger#scopeExtension"));
-}
-
-bool V8Debugger::isRemoteObjectAPIMethod(const String16& name)
-{
-    return name == "bindRemoteObject";
 }
 
 } // namespace blink

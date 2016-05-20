@@ -5,6 +5,7 @@
 #include "platform/inspector_protocol/ErrorSupport.h"
 
 #include "platform/inspector_protocol/String16.h"
+#include "wtf/Assertions.h"
 
 namespace blink {
 namespace protocol {
@@ -23,7 +24,7 @@ ErrorSupport::~ErrorSupport()
 
 void ErrorSupport::setName(const String16& name)
 {
-    ASSERT(m_path.size());
+    DCHECK(m_path.size());
     m_path[m_path.size() - 1] = name;
 }
 

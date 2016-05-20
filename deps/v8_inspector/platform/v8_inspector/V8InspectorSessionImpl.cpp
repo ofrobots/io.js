@@ -19,9 +19,9 @@ namespace blink {
 
 const char V8InspectorSession::backtraceObjectGroup[] = "backtrace";
 
-PassOwnPtr<V8InspectorSessionImpl> V8InspectorSessionImpl::create(V8DebuggerImpl* debugger, int contextGroupId)
+std::unique_ptr<V8InspectorSessionImpl> V8InspectorSessionImpl::create(V8DebuggerImpl* debugger, int contextGroupId)
 {
-    return adoptPtr(new V8InspectorSessionImpl(debugger, contextGroupId));
+    return wrapUnique(new V8InspectorSessionImpl(debugger, contextGroupId));
 }
 
 V8InspectorSessionImpl::V8InspectorSessionImpl(V8DebuggerImpl* debugger, int contextGroupId)
@@ -30,10 +30,10 @@ V8InspectorSessionImpl::V8InspectorSessionImpl(V8DebuggerImpl* debugger, int con
     , m_client(nullptr)
     , m_customObjectFormatterEnabled(false)
     , m_instrumentationCounter(0)
-    , m_runtimeAgent(adoptPtr(new V8RuntimeAgentImpl(this)))
-    , m_debuggerAgent(adoptPtr(new V8DebuggerAgentImpl(this)))
-    , m_heapProfilerAgent(adoptPtr(new V8HeapProfilerAgentImpl(this)))
-    , m_profilerAgent(adoptPtr(new V8ProfilerAgentImpl(this)))
+    , m_runtimeAgent(wrapUnique(new V8RuntimeAgentImpl(this)))
+    , m_debuggerAgent(wrapUnique(new V8DebuggerAgentImpl(this)))
+    , m_heapProfilerAgent(wrapUnique(new V8HeapProfilerAgentImpl(this)))
+    , m_profilerAgent(wrapUnique(new V8ProfilerAgentImpl(this)))
 {
 }
 
@@ -144,7 +144,7 @@ void V8InspectorSessionImpl::releaseObjectGroup(const String16& objectGroup)
 
 v8::Local<v8::Value> V8InspectorSessionImpl::findObject(ErrorString* errorString, const String16& objectId, v8::Local<v8::Context>* context, String16* groupName)
 {
-    OwnPtr<RemoteObjectId> remoteId = RemoteObjectId::parse(errorString, objectId);
+    std::unique_ptr<RemoteObjectId> remoteId = RemoteObjectId::parse(errorString, objectId);
     if (!remoteId)
         return v8::Local<v8::Value>();
     InjectedScript* injectedScript = findInjectedScript(errorString, remoteId.get());
@@ -161,7 +161,7 @@ v8::Local<v8::Value> V8InspectorSessionImpl::findObject(ErrorString* errorString
     return objectValue;
 }
 
-PassOwnPtr<protocol::Runtime::RemoteObject> V8InspectorSessionImpl::wrapObject(v8::Local<v8::Context> context, v8::Local<v8::Value> value, const String16& groupName, bool generatePreview)
+std::unique_ptr<protocol::Runtime::RemoteObject> V8InspectorSessionImpl::wrapObject(v8::Local<v8::Context> context, v8::Local<v8::Value> value, const String16& groupName, bool generatePreview)
 {
     ErrorString errorString;
     InjectedScript* injectedScript = findInjectedScript(&errorString, V8Debugger::contextId(context));
@@ -170,7 +170,7 @@ PassOwnPtr<protocol::Runtime::RemoteObject> V8InspectorSessionImpl::wrapObject(v
     return injectedScript->wrapObject(&errorString, value, groupName, false, generatePreview);
 }
 
-PassOwnPtr<protocol::Runtime::RemoteObject> V8InspectorSessionImpl::wrapTable(v8::Local<v8::Context> context, v8::Local<v8::Value> table, v8::Local<v8::Value> columns)
+std::unique_ptr<protocol::Runtime::RemoteObject> V8InspectorSessionImpl::wrapTable(v8::Local<v8::Context> context, v8::Local<v8::Value> table, v8::Local<v8::Value> columns)
 {
     ErrorString errorString;
     InjectedScript* injectedScript = findInjectedScript(&errorString, V8Debugger::contextId(context));
@@ -203,7 +203,7 @@ void V8InspectorSessionImpl::reportAllContexts(V8RuntimeAgentImpl* agent)
 
 void V8InspectorSessionImpl::changeInstrumentationCounter(int delta)
 {
-    ASSERT(m_instrumentationCounter + delta >= 0);
+    DCHECK(m_instrumentationCounter + delta >= 0);
     if (!m_instrumentationCounter && m_client)
         m_client->startInstrumenting();
     m_instrumentationCounter += delta;
@@ -211,7 +211,7 @@ void V8InspectorSessionImpl::changeInstrumentationCounter(int delta)
         m_client->stopInstrumenting();
 }
 
-void V8InspectorSessionImpl::addInspectedObject(PassOwnPtr<V8InspectorSession::Inspectable> inspectable)
+void V8InspectorSessionImpl::addInspectedObject(std::unique_ptr<V8InspectorSession::Inspectable> inspectable)
 {
     m_inspectedObjects.prepend(std::move(inspectable));
     while (m_inspectedObjects.size() > kInspectedObjectBufferSize)
@@ -222,10 +222,10 @@ V8InspectorSession::Inspectable* V8InspectorSessionImpl::inspectedObject(unsigne
 {
     if (num >= m_inspectedObjects.size())
         return nullptr;
-    return m_inspectedObjects[num].get();
+    return m_inspectedObjects[num];
 }
 
-void V8InspectorSessionImpl::schedulePauseOnNextStatement(const String16& breakReason, PassOwnPtr<protocol::DictionaryValue> data)
+void V8InspectorSessionImpl::schedulePauseOnNextStatement(const String16& breakReason, std::unique_ptr<protocol::DictionaryValue> data)
 {
     m_debuggerAgent->schedulePauseOnNextStatement(breakReason, std::move(data));
 }
@@ -235,12 +235,12 @@ void V8InspectorSessionImpl::cancelPauseOnNextStatement()
     m_debuggerAgent->cancelPauseOnNextStatement();
 }
 
-void V8InspectorSessionImpl::breakProgram(const String16& breakReason, PassOwnPtr<protocol::DictionaryValue> data)
+void V8InspectorSessionImpl::breakProgram(const String16& breakReason, std::unique_ptr<protocol::DictionaryValue> data)
 {
     m_debuggerAgent->breakProgram(breakReason, std::move(data));
 }
 
-void V8InspectorSessionImpl::breakProgramOnException(const String16& breakReason, PassOwnPtr<protocol::DictionaryValue> data)
+void V8InspectorSessionImpl::breakProgramOnException(const String16& breakReason, std::unique_ptr<protocol::DictionaryValue> data)
 {
     m_debuggerAgent->breakProgramOnException(breakReason, std::move(data));
 }

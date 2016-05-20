@@ -108,12 +108,12 @@ def patch_full_qualified_refs():
 
 def create_user_type_definition(domain_name, type):
     return {
-        "return_type": "PassOwnPtr<protocol::%s::%s>" % (domain_name, type["id"]),
-        "pass_type": "PassOwnPtr<protocol::%s::%s>" % (domain_name, type["id"]),
+        "return_type": "std::unique_ptr<protocol::%s::%s>" % (domain_name, type["id"]),
+        "pass_type": "std::unique_ptr<protocol::%s::%s>" % (domain_name, type["id"]),
         "to_raw_type": "%s.get()",
-        "to_pass_type": "%s.release()",
+        "to_pass_type": "std::move(%s)",
         "to_rvalue": "std::move(%s)",
-        "type": "OwnPtr<protocol::%s::%s>" % (domain_name, type["id"]),
+        "type": "std::unique_ptr<protocol::%s::%s>" % (domain_name, type["id"]),
         "raw_type": "protocol::%s::%s" % (domain_name, type["id"]),
         "raw_pass_type": "protocol::%s::%s*" % (domain_name, type["id"]),
         "raw_return_type": "protocol::%s::%s*" % (domain_name, type["id"]),
@@ -122,12 +122,12 @@ def create_user_type_definition(domain_name, type):
 
 def create_object_type_definition():
     return {
-        "return_type": "PassOwnPtr<protocol::DictionaryValue>",
-        "pass_type": "PassOwnPtr<protocol::DictionaryValue>",
+        "return_type": "std::unique_ptr<protocol::DictionaryValue>",
+        "pass_type": "std::unique_ptr<protocol::DictionaryValue>",
         "to_raw_type": "%s.get()",
-        "to_pass_type": "%s.release()",
+        "to_pass_type": "std::move(%s)",
         "to_rvalue": "std::move(%s)",
-        "type": "OwnPtr<protocol::DictionaryValue>",
+        "type": "std::unique_ptr<protocol::DictionaryValue>",
         "raw_type": "protocol::DictionaryValue",
         "raw_pass_type": "protocol::DictionaryValue*",
         "raw_return_type": "protocol::DictionaryValue*",
@@ -136,12 +136,12 @@ def create_object_type_definition():
 
 def create_any_type_definition():
     return {
-        "return_type": "PassOwnPtr<protocol::Value>",
-        "pass_type": "PassOwnPtr<protocol::Value>",
+        "return_type": "std::unique_ptr<protocol::Value>",
+        "pass_type": "std::unique_ptr<protocol::Value>",
         "to_raw_type": "%s.get()",
-        "to_pass_type": "%s.release()",
+        "to_pass_type": "std::move(%s)",
         "to_rvalue": "std::move(%s)",
-        "type": "OwnPtr<protocol::Value>",
+        "type": "std::unique_ptr<protocol::Value>",
         "raw_type": "protocol::Value",
         "raw_pass_type": "protocol::Value*",
         "raw_return_type": "protocol::Value*",
@@ -206,16 +206,16 @@ type_definitions["any"] = create_any_type_definition()
 
 def wrap_array_definition(type):
     return {
-        "return_type": "PassOwnPtr<protocol::Array<%s>>" % type["raw_type"],
-        "pass_type": "PassOwnPtr<protocol::Array<%s>>" % type["raw_type"],
+        "return_type": "std::unique_ptr<protocol::Array<%s>>" % type["raw_type"],
+        "pass_type": "std::unique_ptr<protocol::Array<%s>>" % type["raw_type"],
         "to_raw_type": "%s.get()",
-        "to_pass_type": "%s.release()",
+        "to_pass_type": "std::move(%s)",
         "to_rvalue": "std::move(%s)",
-        "type": "OwnPtr<protocol::Array<%s>>" % type["raw_type"],
+        "type": "std::unique_ptr<protocol::Array<%s>>" % type["raw_type"],
         "raw_type": "protocol::Array<%s>" % type["raw_type"],
         "raw_pass_type": "protocol::Array<%s>*" % type["raw_type"],
         "raw_return_type": "protocol::Array<%s>*" % type["raw_type"],
-        "create_type": "adoptPtr(new protocol::Array<%s>())" % type["raw_type"],
+        "create_type": "wrapUnique(new protocol::Array<%s>())" % type["raw_type"],
         "out_type": "protocol::Array<%s>&" % type["raw_type"],
     }
 
@@ -268,7 +268,7 @@ else:
 
 def is_up_to_date(file, template):
     if not os.path.exists(file):
-        return False;
+        return False
     timestamp = os.path.getmtime(file)
     return timestamp > max(os.path.getmtime(module_path + template),
                            current_script_timestamp, json_timestamp)
@@ -281,7 +281,7 @@ def generate(class_name):
     cpp_file_name = output_dirname + "/" + class_name + ".cpp"
 
     if (is_up_to_date(cpp_file_name, cpp_template_name) and
-        is_up_to_date(h_file_name, h_template_name)):
+            is_up_to_date(h_file_name, h_template_name)):
         return
 
     template_context = {

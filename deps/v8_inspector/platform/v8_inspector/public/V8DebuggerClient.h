@@ -43,7 +43,9 @@ public:
 
     virtual v8::MaybeLocal<v8::Value> memoryInfo(v8::Isolate*, v8::Local<v8::Context>, v8::Local<v8::Object> creationContext) = 0;
 
-    virtual void cancelTimer(int) = 0;
+    typedef void (*TimerCallback)(void*);
+    virtual void startRepeatingTimer(double, TimerCallback, void* data) = 0;
+    virtual void cancelTimer(void* data) = 0;
 };
 
 } // namespace blink
