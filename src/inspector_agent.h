@@ -10,13 +10,11 @@
 #include "v8.h"
 #include "util.h"
 
+#include <string>
 #include <vector>
 
 namespace blink {
 class V8Inspector;
-namespace protocol {
-  class String16;
-}
 }
 
 // Forward declaration to break recursive dependency chain with src/env.h.
@@ -55,10 +53,13 @@ class Agent {
 
   void WorkerRunIO();
   void OnInspectorConnectionIO(inspector_socket_t* socket);
-
+  void PushPendingMessage(std::vector<std::string>* queue,
+                          const std::string& message);
+  void SwapBehindLock(std::vector<std::string> Agent::*queue,
+                      std::vector<std::string>* output);
   void PostMessages();
   void SetConnected(bool connected);
-  void Write(const blink::protocol::String16& message);
+  void Write(const std::string& message);
 
   uv_sem_t start_sem_;
   uv_cond_t pause_cond_;
@@ -75,13 +76,14 @@ class Agent {
   node::Environment* parent_env_;
 
   uv_async_t data_written_;
+  uv_async_t io_thread_req_;
   inspector_socket_t* client_socket_;
   blink::V8Inspector* inspector_;
   v8::Platform* platform_;
-  std::vector<blink::protocol::String16> message_queue_;
+  std::vector<std::string> message_queue_;
+  std::vector<std::string> outgoing_message_queue_;
   bool dispatching_messages_;
 
-  friend class AsyncWriteRequest;
   friend class ChannelImpl;
   friend class DispatchOnInspectorBackendTask;
   friend class SetConnectedTask;

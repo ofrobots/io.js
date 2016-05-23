@@ -196,25 +196,10 @@ class ChannelImpl final : public blink::protocol::FrontendChannel {
   virtual void flush() override { }
 
   void sendMessageToFrontend(std::unique_ptr<DictionaryValue> message) {
-    agent_->Write(message->toJSONString());
+    agent_->Write(message->toJSONString().utf8());
   }
 
   Agent* const agent_;
-};
-
-class AsyncWriteRequest {
- public:
-  AsyncWriteRequest(Agent* agent, const String16& message) :
-                    agent_(agent), message_(message) {}
-  void perform() {
-    inspector_socket_t* socket = agent_->client_socket_;
-    if (socket) {
-      inspector_write(socket, message_.utf8().c_str(), message_.length());
-    }
-  }
- private:
-  Agent* const agent_;
-  const String16 message_;
 };
 
 class SetConnectedTask : public v8::Task {
@@ -398,19 +383,15 @@ void Agent::OnRemoteDataIO(uv_stream_t* stream,
   inspector_socket_t* socket = static_cast<inspector_socket_t*>(stream->data);
   Agent* agent = static_cast<Agent*>(socket->data);
   if (read > 0) {
-    uv_mutex_lock(&agent->queue_lock_);
-    blink::protocol::String16 str(b->base, read);
-    agent->message_queue_.push_back(str);
-    uv_mutex_unlock(&agent->queue_lock_);
+    std::string str(b->base, read);
+    agent->PushPendingMessage(&agent->message_queue_, str);
     free(b->base);
 
     // TODO(pfeldman): Instead of blocking execution while debugger
     // engages, node should wait for the run callback from the remote client
     // and initiate its startup. This is a change to node.cc that should be
     // upstreamed separately.
-    if (agent->wait_ &&
-        str.find(blink::protocol::String16("\"Runtime.run\"")) !=
-            std::string::npos) {
+    if (agent->wait_ && str.find("\"Runtime.run\"") != std::string::npos) {
       agent->wait_ = false;
       uv_sem_post(&agent->start_sem_);
     }
@@ -437,18 +418,38 @@ void Agent::OnRemoteDataIO(uv_stream_t* stream,
   uv_cond_broadcast(&agent->pause_cond_);
 }
 
+void Agent::PushPendingMessage(std::vector<std::string>* queue,
+                               const std::string& message) {
+  uv_mutex_lock(&queue_lock_);
+  queue->push_back(message);
+  uv_mutex_unlock(&queue_lock_);
+}
+
+void Agent::SwapBehindLock(std::vector<std::string> Agent::*queue,
+                           std::vector<std::string>* output) {
+  uv_mutex_lock(&queue_lock_);
+  (this->*queue).swap(*output);
+  uv_mutex_unlock(&queue_lock_);
+}
+
 // static
 void Agent::WriteCbIO(uv_async_t* async) {
-  auto req = static_cast<AsyncWriteRequest*>(async->data);
-  req->perform();
-  delete req;
-  uv_close(reinterpret_cast<uv_handle_t*>(async), DisposeAsyncCb);
+  Agent* agent = static_cast<Agent*>(async->data);
+  inspector_socket_t* socket = agent->client_socket_;
+  if (socket) {
+    std::vector<std::string> outgoing_messages;
+    agent->SwapBehindLock(&Agent::outgoing_message_queue_, &outgoing_messages);
+    for (auto const& message : outgoing_messages)
+      inspector_write(socket, message.c_str(), message.length());
+  }
 }
 
 void Agent::WorkerRunIO() {
-  int err;
   sockaddr_in addr;
   uv_tcp_t server;
+  int err = uv_async_init(&child_loop_, &io_thread_req_, Agent::WriteCbIO);
+  CHECK_EQ(0, err);
+  io_thread_req_.data = this;
   uv_tcp_init(&child_loop_, &server);
   uv_ip4_addr("0.0.0.0", port_, &addr);
   server.data = this;
@@ -468,6 +469,7 @@ void Agent::WorkerRunIO() {
     uv_sem_post(&start_sem_);
   }
   uv_run(&child_loop_, UV_RUN_DEFAULT);
+  uv_close(reinterpret_cast<uv_handle_t*>(&io_thread_req_), nullptr);
   uv_close(reinterpret_cast<uv_handle_t*>(&server), nullptr);
   uv_run(&child_loop_, UV_RUN_DEFAULT);
 }
@@ -486,13 +488,11 @@ void Agent::PostMessages() {
   if (dispatching_messages_)
     return;
   dispatching_messages_ = true;
-  std::vector<blink::protocol::String16> messages;
-  uv_mutex_lock(&queue_lock_);
-  messages.swap(message_queue_);
-  uv_mutex_unlock(&queue_lock_);
-
+  std::vector<std::string> messages;
+  SwapBehindLock(&Agent::message_queue_, &messages);
   for (auto const& message : messages)
-    inspector_->dispatchMessageFromFrontend(message);
+    inspector_->dispatchMessageFromFrontend(
+        String16::fromUTF8(message.c_str(), message.length()));
   uv_async_send(&data_written_);
   dispatching_messages_ = false;
 }
@@ -513,14 +513,9 @@ void Agent::SetConnected(bool connected) {
   }
 }
 
-void Agent::Write(const String16& message) {
-  uv_async_t* async = static_cast<uv_async_t*>(malloc(sizeof(*async)));
-  CHECK_NE(async, nullptr);
-  int err = uv_async_init(&child_loop_, async, Agent::WriteCbIO);
-  CHECK_EQ(0, err);
-  async->data = new AsyncWriteRequest(this, message);
-  CHECK_EQ(0, uv_async_send(async));
+void Agent::Write(const std::string& message) {
+  PushPendingMessage(&outgoing_message_queue_, message);
+  ASSERT_EQ(0, uv_async_send(&io_thread_req_));
 }
-
 }  // namespace debugger
 }  // namespace node
