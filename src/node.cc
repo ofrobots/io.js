@@ -3418,6 +3418,11 @@ static bool ParseDebugOpt(const char* arg) {
     use_debug_agent = true;
     use_inspector = true;
     port = arg + sizeof("--inspect=") - 1;
+#else
+  } else if (!strncmp(arg, "--inspect", sizeof("--inspect") - 1)) {
+    fprintf(stderr,
+            "Inspector support is not available with this Node.js build\n");
+    return false;
 #endif
   } else {
     return false;
