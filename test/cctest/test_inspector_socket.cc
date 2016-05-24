@@ -8,15 +8,17 @@ static const int MAX_LOOP_ITERATIONS = 10000;
 
 #define SPIN_WHILE(condition)                                                  \
   {                                                                            \
-    int iterations_count = 0;                                                  \
-    while ((condition)) {                                                      \
-      if (++iterations_count > MAX_LOOP_ITERATIONS)                            \
-        break;                                                                 \
+    bool timed_out = false;                                                    \
+    timeout_timer.data = &timed_out;                                           \
+    uv_timer_start(&timeout_timer, set_timeout_flag, 5000, 0);                 \
+    while (((condition)) && !timed_out) {                                      \
       uv_run(&loop, UV_RUN_NOWAIT);                                            \
     }                                                                          \
+    uv_timer_stop(&timeout_timer);                                             \
     ASSERT_FALSE((condition));                                                 \
   }
 
+static uv_timer_t timeout_timer;
 static bool connected = false;
 static bool inspector_ready = false;
 static int handshake_events = 0;
@@ -42,6 +44,10 @@ static const char HANDSHAKE_REQ[] = "GET /ws/path HTTP/1.1\r\n"
                                     "Connection: Upgrade\r\n"
                                     "Sec-WebSocket-Key: aaa==\r\n"
                                     "Sec-WebSocket-Version: 13\r\n\r\n";
+
+static void set_timeout_flag(uv_timer_t* timer) {
+  *((bool*)timer->data) = true;
+}
 
 static void stop_if_stop_path(enum inspector_handshake_event state,
                               const char *path, bool *cont) {
@@ -216,7 +222,6 @@ static void expect_handshake_failure() {
       "HTTP/1.0 400 Bad Request\r\n"
       "Content-Type: text/html; charset=UTF-8\r\n\r\n"
       "WebSockets request was expected\r\n";
-  ;
   expect_on_client(UPGRADE_RESPONSE, sizeof(UPGRADE_RESPONSE) - 1);
 }
 
@@ -260,6 +265,7 @@ protected:
     memset(&client_socket, 0, sizeof(client_socket));
     server.data = &inspector;
     sockaddr_in addr;
+    uv_timer_init(&loop, &timeout_timer);
     uv_tcp_init(&loop, &server);
     uv_tcp_init(&loop, &client_socket);
     uv_ip4_addr("localhost", PORT, &addr);
@@ -417,7 +423,6 @@ TEST_F(InspectorSocketTest, AcceptsRequestInSeveralWrites) {
 }
 
 TEST_F(InspectorSocketTest, ExtraTextBeforeRequest) {
-
   char UNCOOL_BRO[] = "Uncool, bro: Text before the first req\r\n";
   do_write((char *)UNCOOL_BRO, sizeof(UNCOOL_BRO) - 1);
 
@@ -431,7 +436,6 @@ TEST_F(InspectorSocketTest, ExtraTextBeforeRequest) {
 }
 
 TEST_F(InspectorSocketTest, ExtraLettersBeforeRequest) {
-
   char UNCOOL_BRO[] = "Uncool!!";
   do_write((char *)UNCOOL_BRO, sizeof(UNCOOL_BRO) - 1);
 

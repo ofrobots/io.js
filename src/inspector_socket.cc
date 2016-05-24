@@ -577,10 +577,10 @@ static void data_received_cb(uv_stream_s* client, ssize_t nread,
     inspector->http_parsing_state = nullptr;
   } else {
     http_parser* parser = &state->parser;
-    size_t parsed = http_parser_execute(parser, &state->parser_settings,
-                                        inspector->buffer,
-                                        nread);
-    if (parsed == 0) {
+    ssize_t parsed = http_parser_execute(parser, &state->parser_settings,
+                                         inspector->buffer,
+                                         nread);
+    if (parsed < nread) {
       handshake_failed(inspector);
     }
     inspector->data_len = 0;
