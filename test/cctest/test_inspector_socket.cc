@@ -132,7 +132,14 @@ static void inspector_check_data_cb(uv_stream_t *stream, ssize_t nread,
     EXPECT_EQ(expectation, nullptr);
     return;
   } else {
-    EXPECT_STREQ(expectation, (const char *)buf->base);
+    const char* actual = (const char *)buf->base;
+    const size_t expected_len = strlen(expectation);
+    for (size_t i = 0; i < expected_len; i++) {
+      if (expectation[i] != actual[i]) {
+        fprintf(stderr, "At position %ld\n", i);
+        GTEST_ASSERT_EQ(expectation[i], actual[i]);
+      }
+    }
   }
   inspector->data = nullptr;
   free(buf->base);
@@ -717,4 +724,71 @@ TEST_F(InspectorSocketTest, EOFBeforeHandshake) {
   expect_on_client(MESSAGE, sizeof(MESSAGE) - 1);
   uv_close((uv_handle_t *)&client_socket, nullptr);
   SPIN_WHILE(last_event != kInspectorHandshakeFailed);
+}
+
+template<size_t l>
+static void fill_message(char buffer[l]) {
+  buffer[l - 1] = '\0';
+  for (size_t i = 0; i < l - 1; i++) {
+    buffer[i] = 'a' + (i % ('z' - 'a'));
+  }
+}
+
+static void mask_message(const char *message,
+                         char* buffer, const char mask[]) {
+  const size_t mask_len = 4;
+  int i = 0;
+  while (*message != '\0') {
+    *buffer++ = *message++ ^ mask[i++ % mask_len];
+  }
+}
+
+TEST_F(InspectorSocketTest, Send1Mb) {
+  ASSERT_TRUE(connected);
+  ASSERT_FALSE(inspector_ready);
+  do_write((char *)HANDSHAKE_REQ, sizeof(HANDSHAKE_REQ) - 1);
+  SPIN_WHILE(!inspector_ready);
+  expect_handshake();
+
+  // 2. Brief exchange
+  char LONG_MESSAGE[1000001];
+  fill_message<sizeof(LONG_MESSAGE)>(LONG_MESSAGE);
+
+  // 1000000 is 0xF4240 hex
+  const char EXPECTED_FRAME_HEADER[] = {
+    '\x81', '\x7f', '\x00', '\x00', '\x00', '\x00', '\x00', '\x0F',
+    '\x42', '\x40'
+  };
+  char EXPECTED_FRAME[sizeof(EXPECTED_FRAME_HEADER) + sizeof(LONG_MESSAGE) - 1];
+  memcpy(EXPECTED_FRAME, EXPECTED_FRAME_HEADER, sizeof(EXPECTED_FRAME_HEADER));
+  memcpy(EXPECTED_FRAME + sizeof(EXPECTED_FRAME_HEADER), LONG_MESSAGE,
+         sizeof(LONG_MESSAGE) - 1);
+
+  inspector_write(&inspector, LONG_MESSAGE, sizeof(LONG_MESSAGE) - 1);
+  expect_on_client(EXPECTED_FRAME, sizeof(EXPECTED_FRAME));
+
+  char MASK[4] = {'W', 'h', 'O', 'a'};
+
+  const char FRAME_TO_SERVER_HEADER[] = {
+    '\x81', '\xff', '\x00', '\x00', '\x00', '\x00', '\x00', '\x0F',
+    '\x42', '\x40', MASK[0], MASK[1], MASK[2], MASK[3]
+  };
+
+  char FRAME_TO_SERVER[sizeof(FRAME_TO_SERVER_HEADER) + sizeof(LONG_MESSAGE) - 1];
+  memcpy(FRAME_TO_SERVER, FRAME_TO_SERVER_HEADER,
+         sizeof(FRAME_TO_SERVER_HEADER));
+  mask_message(LONG_MESSAGE, FRAME_TO_SERVER + sizeof(FRAME_TO_SERVER_HEADER),
+               MASK);
+
+  // do_write(FRAME_TO_SERVER, sizeof(FRAME_TO_SERVER));
+  // expect_on_server(LONG_MESSAGE, sizeof(LONG_MESSAGE));
+
+  // // 3. Close
+  // const char CLIENT_CLOSE_FRAME[] = {'\x88', '\x80', '\x2D',
+  //                                    '\x0E', '\x1E', '\xFA'};
+  // const char SERVER_CLOSE_FRAME[] = {'\x88', '\x00'};
+  // do_write(CLIENT_CLOSE_FRAME, sizeof(CLIENT_CLOSE_FRAME));
+  // expect_on_client(SERVER_CLOSE_FRAME, sizeof(SERVER_CLOSE_FRAME));
+  // GTEST_ASSERT_EQ(0, uv_is_active((uv_handle_t *)&client_socket));
+  manual_inspector_socket_cleanup();
 }
