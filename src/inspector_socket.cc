@@ -172,7 +172,7 @@ static std::vector<char> encode_frame_hybi17(const char* message,
     }
     frame.insert(frame.end(), extended_payload_length,
                  extended_payload_length + 8);
-    ASSERT_NE(0, remaining);
+    ASSERT_EQ(0, remaining);
   }
   frame.insert(frame.end(), message, message + data_length);
   return frame;
