@@ -452,7 +452,7 @@ void Agent::WorkerRunIO() {
   err = uv_tcp_bind(&server,
                     reinterpret_cast<const struct sockaddr*>(&addr), 0);
   if (err == 0) {
-    err = uv_listen(reinterpret_cast<uv_stream_t*>(&server), 0,
+    err = uv_listen(reinterpret_cast<uv_stream_t*>(&server), 1,
                     OnSocketConnectionIO);
   }
   if (err == 0) {
