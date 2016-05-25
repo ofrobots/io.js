@@ -130,27 +130,6 @@ static void check_data_cb(uv_stream_t *stream, ssize_t nread,
   }
 }
 
-static void inspector_check_data_cb(uv_stream_t *stream, ssize_t nread,
-                                    const uv_buf_t *buf) {
-  inspector_socket_t *inspector = (inspector_socket_t *)stream->data;
-  const char *expectation = (const char *)inspector->data;
-  if (nread <= 0) {
-    EXPECT_EQ(expectation, nullptr);
-    return;
-  } else {
-    const char* actual = (const char *)buf->base;
-    const size_t expected_len = strlen(expectation);
-    for (size_t i = 0; i < expected_len; i++) {
-      if (expectation[i] != actual[i]) {
-        fprintf(stderr, "At position %ld\n", i);
-        GTEST_ASSERT_EQ(expectation[i], actual[i]);
-      }
-    }
-  }
-  inspector->data = nullptr;
-  free(buf->base);
-}
-
 static read_expects prepare_expects(const char *data, size_t len) {
   read_expects expectation;
   expectation.expected = data;
@@ -186,10 +165,87 @@ static void expect_on_client(const char *data, size_t len) {
   SPIN_WHILE(!expectation.read_expected);
 }
 
+struct expectations {
+  char* actual_data;
+  size_t actual_offset;
+  size_t actual_end;
+  int err_code;
+};
+
+static void grow_expects_buffer(uv_handle_t* stream, size_t size, uv_buf_t* b) {
+  expectations* expects =
+      (expectations*) ((inspector_socket_t*) stream->data)->data;
+  size_t end = expects->actual_end;
+  // Grow the buffer in chunks of 64k.
+  size_t new_length = (end + size + 65535) & ~((size_t) 0xFFFF);
+  expects->actual_data = (char*) realloc(expects->actual_data, new_length);
+  *b = uv_buf_init(expects->actual_data + end, new_length - end);
+}
+
+// static void dump_hex(const char* buf, size_t len) {
+//   const char* ptr = buf;
+//   const char* end = ptr + len;
+//   const char* cptr;
+//   char c;
+//   int i;
+
+//   while (ptr < end) {
+//     cptr = ptr;
+//     for (i = 0; i < 16 && ptr < end; i++) {
+//       printf("%2.2X  ", *(ptr++));
+//     }
+//     for (i = 72 - (i * 4); i > 0; i--) {
+//       printf(" ");
+//     }
+//     for (i = 0; i < 16 && cptr < end; i++) {
+//       c = *(cptr++);
+//       printf("%c", (c > 0x19) ? c : '.');
+//     }
+//     printf("\n");
+//   }
+//   printf("\n\n");
+// }
+
+static void save_read_data(uv_stream_t* stream, ssize_t nread,
+                           const uv_buf_t* buf) {
+  expectations* expects =
+      (expectations*) ((inspector_socket_t*) stream->data)->data;
+  expects->err_code = nread < 0 ? nread : 0;
+  if (nread > 0) {
+    expects->actual_end += nread;
+  }
+}
+
+static void setup_inspector_expecting() {
+  if (inspector.data) {
+    return;
+  }
+  expectations* expects = (expectations*) malloc(sizeof(*expects));
+  memset(expects, 0, sizeof(*expects));
+  inspector.data = expects;
+  inspector_read_start(&inspector, grow_expects_buffer, save_read_data);
+}
+
 static void expect_on_server(const char *data, size_t len) {
-  inspector.data = (void *)data;
-  inspector_read_start(&inspector, buffer_alloc_cb, inspector_check_data_cb);
-  SPIN_WHILE(inspector.data != nullptr)
+  setup_inspector_expecting();
+  expectations* expects = (expectations*) inspector.data;
+  for (size_t i = 0; i < len;) {
+    SPIN_WHILE(expects->actual_offset == expects->actual_end);
+    for (; i < len && expects->actual_offset < expects->actual_end; i++) {
+      char actual = expects->actual_data[expects->actual_offset++];
+      char expected = data[i];
+      if (expected != actual) {
+        fprintf(stderr, "Character %ld:\n", i);
+        GTEST_ASSERT_EQ(expected, actual);
+      }
+    }
+  }
+  expects->actual_end -= expects->actual_offset;
+  if (!expects->actual_end) {
+    memmove(expects->actual_data, expects->actual_data + expects->actual_offset,
+            expects->actual_end);
+  }
+  expects->actual_offset = 0;
 }
 
 static void inspector_record_error_code(uv_stream_t *stream, ssize_t nread,
@@ -200,12 +256,9 @@ static void inspector_record_error_code(uv_stream_t *stream, ssize_t nread,
 }
 
 static void expect_server_read_error() {
-  int error_code = 0;
-  inspector.data = &error_code;
-  inspector_read_start(&inspector, buffer_alloc_cb,
-                       inspector_record_error_code);
-  SPIN_WHILE(error_code != UV_EPROTO);
-  GTEST_ASSERT_EQ(UV_EPROTO, error_code);
+  setup_inspector_expecting();
+  expectations* expects = (expectations*) inspector.data;
+  SPIN_WHILE(expects->err_code != UV_EPROTO);
 }
 
 static void expect_handshake() {
@@ -293,6 +346,14 @@ protected:
       uv_print_active_handles(&loop, stderr);
     }
     EXPECT_EQ(0, err);
+    expectations* expects = (expectations*) inspector.data;
+    if (expects != nullptr) {
+      GTEST_ASSERT_EQ(expects->actual_end, expects->actual_offset);
+      free(expects->actual_data);
+      expects->actual_data = nullptr;
+      free(expects);
+      inspector.data = nullptr;
+    }
   }
 };
 
@@ -322,18 +383,6 @@ TEST_F(InspectorSocketTest, ReadsAndWritesInspectorMessage) {
   do_write(CLIENT_CLOSE_FRAME, sizeof(CLIENT_CLOSE_FRAME));
   expect_on_client(SERVER_CLOSE_FRAME, sizeof(SERVER_CLOSE_FRAME));
   GTEST_ASSERT_EQ(0, uv_is_active((uv_handle_t *)&client_socket));
-}
-
-void expect_data(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
-  inspector_socket_t *inspector = (inspector_socket_t *)stream->data;
-  const char **next_line = (const char **)inspector->data;
-  char *actual_line = (char*) malloc(nread + 1);
-  memcpy(actual_line, buf->base, nread);
-  actual_line[nread] = '\0';
-  EXPECT_STREQ(*next_line, actual_line);
-  inspector->data = next_line + 1;
-  free(buf->base);
-  free(actual_line);
 }
 
 TEST_F(InspectorSocketTest, BufferEdgeCases) {
@@ -383,21 +432,18 @@ TEST_F(InspectorSocketTest, BufferEdgeCases) {
       '\x75', '\x84', '\x8F', '\x15', '\x6E', '\x83', '\x84', '\x12', '\x69',
       '\xC8', '\x96'};
 
-  const char *EXPECT[] = {
+  const char EXPECT[] = {
       "{\"id\":12,\"method\":\"Worker.setAutoconnectToWorkers\","
-      "\"params\":{\"value\":true}}",
-      "{\"id\":13,\"method\":\"Worker.enable\"}",
-      "{\"id\":14,\"method\":\"Profiler.enable\"}",
+      "\"params\":{\"value\":true}}"
+      "{\"id\":13,\"method\":\"Worker.enable\"}"
+      "{\"id\":14,\"method\":\"Profiler.enable\"}"
       "{\"id\":15,\"method\":\"Profiler.setSamplingInterval\","
-      "\"params\":{\"interval\":100}}",
-      "{\"id\":16,\"method\":\"ServiceWorker.enable\"}",
-      "{\"id\":17,\"method\":\"Network.canEmulateNetworkConditions\"}",
-      nullptr};
+      "\"params\":{\"interval\":100}}"
+      "{\"id\":16,\"method\":\"ServiceWorker.enable\"}"
+      "{\"id\":17,\"method\":\"Network.canEmulateNetworkConditions\"}"};
 
   do_write(MULTIPLE_REQUESTS, sizeof(MULTIPLE_REQUESTS));
-  inspector.data = EXPECT;
-  inspector_read_start(&inspector, buffer_alloc_cb, expect_data);
-  SPIN_WHILE(*((char **)inspector.data) != nullptr);
+  expect_on_server(EXPECT, sizeof(EXPECT) - 1);
   inspector_read_stop(&inspector);
   manual_inspector_socket_cleanup();
 }
@@ -423,10 +469,10 @@ TEST_F(InspectorSocketTest, AcceptsRequestInSeveralWrites) {
 }
 
 TEST_F(InspectorSocketTest, ExtraTextBeforeRequest) {
+  last_event = kInspectorHandshakeUpgraded;
   char UNCOOL_BRO[] = "Uncool, bro: Text before the first req\r\n";
   do_write((char *)UNCOOL_BRO, sizeof(UNCOOL_BRO) - 1);
 
-  last_event = kInspectorHandshakeUpgraded;
   ASSERT_FALSE(inspector_ready);
   do_write((char *)HANDSHAKE_REQ, sizeof(HANDSHAKE_REQ) - 1);
   SPIN_WHILE(last_event != kInspectorHandshakeFailed);
@@ -519,6 +565,7 @@ TEST_F(InspectorSocketTest, CloseDoesNotNotifyReadCallback) {
   do_write(CLIENT_CLOSE_FRAME, sizeof(CLIENT_CLOSE_FRAME));
   EXPECT_NE(UV_EOF, error_code);
   SPIN_WHILE(!inspector_closed);
+  inspector.data = nullptr;
 }
 
 TEST_F(InspectorSocketTest, CloseWorksWithoutReadEnabled) {
@@ -720,6 +767,7 @@ TEST_F(InspectorSocketTest, CleanupSocketAfterEOF) {
   bool flag = false;
   inspector.data = &flag;
   SPIN_WHILE(!flag);
+  inspector.data = nullptr;
 }
 
 TEST_F(InspectorSocketTest, EOFBeforeHandshake) {
@@ -779,22 +827,22 @@ TEST_F(InspectorSocketTest, Send1Mb) {
     '\x42', '\x40', MASK[0], MASK[1], MASK[2], MASK[3]
   };
 
-  char *outgoing = (char*) malloc(sizeof(FRAME_TO_SERVER_HEADER) + message_len);
+  const size_t outgoing_len = sizeof(FRAME_TO_SERVER_HEADER) + message_len;
+  char *outgoing = (char*) malloc(outgoing_len);
   memcpy(outgoing, FRAME_TO_SERVER_HEADER, sizeof(FRAME_TO_SERVER_HEADER));
   mask_message(message, outgoing + sizeof(FRAME_TO_SERVER_HEADER), MASK);
 
-  // do_write(FRAME_TO_SERVER, sizeof(FRAME_TO_SERVER));
-  // expect_on_server(LONG_MESSAGE, sizeof(LONG_MESSAGE));
+  setup_inspector_expecting(); // Buffer on the client side.
+  do_write(outgoing, outgoing_len);
+  expect_on_server(message, message_len);
 
-  // // 3. Close
-  // const char CLIENT_CLOSE_FRAME[] = {'\x88', '\x80', '\x2D',
-  //                                    '\x0E', '\x1E', '\xFA'};
-  // const char SERVER_CLOSE_FRAME[] = {'\x88', '\x00'};
-  // do_write(CLIENT_CLOSE_FRAME, sizeof(CLIENT_CLOSE_FRAME));
-  // expect_on_client(SERVER_CLOSE_FRAME, sizeof(SERVER_CLOSE_FRAME));
-  // GTEST_ASSERT_EQ(0, uv_is_active((uv_handle_t *)&client_socket));
-  manual_inspector_socket_cleanup();
-
+  // 3. Close
+  const char CLIENT_CLOSE_FRAME[] = {'\x88', '\x80', '\x2D',
+                                     '\x0E', '\x1E', '\xFA'};
+  const char SERVER_CLOSE_FRAME[] = {'\x88', '\x00'};
+  do_write(CLIENT_CLOSE_FRAME, sizeof(CLIENT_CLOSE_FRAME));
+  expect_on_client(SERVER_CLOSE_FRAME, sizeof(SERVER_CLOSE_FRAME));
+  GTEST_ASSERT_EQ(0, uv_is_active((uv_handle_t *)&client_socket));
   free(outgoing);
   free(expected);
   free(message);
