@@ -726,10 +726,9 @@ TEST_F(InspectorSocketTest, EOFBeforeHandshake) {
   SPIN_WHILE(last_event != kInspectorHandshakeFailed);
 }
 
-template<size_t l>
-static void fill_message(char buffer[l]) {
-  buffer[l - 1] = '\0';
-  for (size_t i = 0; i < l - 1; i++) {
+static void fill_message(char* buffer, size_t len) {
+  buffer[len - 1] = '\0';
+  for (size_t i = 0; i < len - 1; i++) {
     buffer[i] = 'a' + (i % ('z' - 'a'));
   }
 }
@@ -750,22 +749,24 @@ TEST_F(InspectorSocketTest, Send1Mb) {
   SPIN_WHILE(!inspector_ready);
   expect_handshake();
 
+  const size_t message_len = 1000000;
+
   // 2. Brief exchange
-  char LONG_MESSAGE[1000001];
-  fill_message<sizeof(LONG_MESSAGE)>(LONG_MESSAGE);
+  char* message = (char*) malloc(message_len + 1);
+  fill_message(message, message_len + 1);
 
   // 1000000 is 0xF4240 hex
   const char EXPECTED_FRAME_HEADER[] = {
     '\x81', '\x7f', '\x00', '\x00', '\x00', '\x00', '\x00', '\x0F',
     '\x42', '\x40'
   };
-  char EXPECTED_FRAME[sizeof(EXPECTED_FRAME_HEADER) + sizeof(LONG_MESSAGE) - 1];
-  memcpy(EXPECTED_FRAME, EXPECTED_FRAME_HEADER, sizeof(EXPECTED_FRAME_HEADER));
-  memcpy(EXPECTED_FRAME + sizeof(EXPECTED_FRAME_HEADER), LONG_MESSAGE,
-         sizeof(LONG_MESSAGE) - 1);
+  char* expected = (char*) malloc(sizeof(EXPECTED_FRAME_HEADER) + message_len);
 
-  inspector_write(&inspector, LONG_MESSAGE, sizeof(LONG_MESSAGE) - 1);
-  expect_on_client(EXPECTED_FRAME, sizeof(EXPECTED_FRAME));
+  memcpy(expected, EXPECTED_FRAME_HEADER, sizeof(EXPECTED_FRAME_HEADER));
+  memcpy(expected + sizeof(EXPECTED_FRAME_HEADER), message, message_len);
+
+  inspector_write(&inspector, message, message_len);
+  expect_on_client(expected, sizeof(EXPECTED_FRAME_HEADER) + message_len);
 
   char MASK[4] = {'W', 'h', 'O', 'a'};
 
@@ -774,11 +775,9 @@ TEST_F(InspectorSocketTest, Send1Mb) {
     '\x42', '\x40', MASK[0], MASK[1], MASK[2], MASK[3]
   };
 
-  char FRAME_TO_SERVER[sizeof(FRAME_TO_SERVER_HEADER) + sizeof(LONG_MESSAGE) - 1];
-  memcpy(FRAME_TO_SERVER, FRAME_TO_SERVER_HEADER,
-         sizeof(FRAME_TO_SERVER_HEADER));
-  mask_message(LONG_MESSAGE, FRAME_TO_SERVER + sizeof(FRAME_TO_SERVER_HEADER),
-               MASK);
+  char *outgoing = (char*) malloc(sizeof(FRAME_TO_SERVER_HEADER) + message_len);
+  memcpy(outgoing, FRAME_TO_SERVER_HEADER, sizeof(FRAME_TO_SERVER_HEADER));
+  mask_message(message, outgoing + sizeof(FRAME_TO_SERVER_HEADER), MASK);
 
   // do_write(FRAME_TO_SERVER, sizeof(FRAME_TO_SERVER));
   // expect_on_server(LONG_MESSAGE, sizeof(LONG_MESSAGE));
@@ -791,4 +790,8 @@ TEST_F(InspectorSocketTest, Send1Mb) {
   // expect_on_client(SERVER_CLOSE_FRAME, sizeof(SERVER_CLOSE_FRAME));
   // GTEST_ASSERT_EQ(0, uv_is_active((uv_handle_t *)&client_socket));
   manual_inspector_socket_cleanup();
+
+  free(outgoing);
+  free(expected);
+  free(message);
 }
