@@ -9,7 +9,7 @@
 #include <string.h>
 #include <vector>
 
-#define ACCEPT_KEY_LENGTH 28  // SHA1 has is 20 bytes, 28 in base64
+#define ACCEPT_KEY_LENGTH base64_encoded_size(20)
 #define BUFFER_GROWTH_CHUNK_SIZE 1024
 
 #define DUMP_READS 0
@@ -326,7 +326,7 @@ static int parse_ws_frames(inspector_socket_t* inspector, size_t len) {
     inspector->ws_state->alloc_cb(
         reinterpret_cast<uv_handle_t*>(&inspector->client),
         len, &buffer);
-    CHECK_GE(len, buffer.len);
+    CHECK_GE(buffer.len, len);
     memcpy(buffer.base, &output[0], len);
     invoke_read_callback(inspector, len, &buffer);
   }
