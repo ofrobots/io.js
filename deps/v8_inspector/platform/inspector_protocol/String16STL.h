@@ -5,6 +5,9 @@
 #ifndef String16STL_h
 #define String16STL_h
 
+#include <stdint.h>
+
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
