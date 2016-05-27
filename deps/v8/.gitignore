@@ -40,6 +40,7 @@ gcsuspects
 shell
 shell_g
 /_*
+/base
 /build/Debug
 /build/gyp
 /build/ipch
