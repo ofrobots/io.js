@@ -5,15 +5,16 @@
 #ifndef String16STL_h
 #define String16STL_h
 
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
 
-using UChar = uint16_t;
-using UChar32 = uint32_t;
-using LChar = unsigned char;
+typedef uint16_t UChar;
+typedef uint32_t UChar32;
+typedef unsigned char LChar;
 // presubmit: allow wstring
-using wstring = std::basic_string<UChar>;
+typedef std::basic_string<UChar> wstring;
 const size_t kNotFound = static_cast<size_t>(-1);
 
 namespace blink {
@@ -211,8 +212,8 @@ inline String16 operator+(const String16& a, const String16& b)
 } // namespace protocol
 } // namespace blink
 
-using String16 = blink::protocol::String16;
-using String16Builder = blink::protocol::String16Builder;
+typedef blink::protocol::String16 String16;
+typedef blink::protocol::String16Builder String16Builder;
 
 
 namespace WTF {
@@ -228,6 +229,6 @@ public:
 };
 } // namespace WTF
 
-using String = WTF::String;
+typedef WTF::String String;
 
 #endif // !defined(String16STL_h)
