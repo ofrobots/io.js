@@ -2,7 +2,6 @@
 
 #define NODE_WANT_INTERNALS 1
 #include "base64.h"
-#include "node_internals.h"
 
 #include "openssl/sha.h"  // Sha-1 hash
 
