@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <functional>
 #include <locale>
 
@@ -526,7 +527,7 @@ static inline wstring &trim(wstring &s)
 std::string String16::intToString(int i)
 {
     char buffer[50];
-    std::snprintf(buffer, 50, "%d", i);
+    std::sprintf(buffer, "%d", i);
     return std::string(buffer);
 }
 
@@ -534,7 +535,7 @@ std::string String16::intToString(int i)
 std::string String16::doubleToString(double d)
 {
     char buffer[100];
-    std::snprintf(buffer, 100, "%f", d);
+    std::sprintf(buffer, "%f", d);
     return std::string(buffer);
 }
 
