@@ -1,11 +1,11 @@
 #include "inspector_agent.h"
 
-// Avoid conflicts between Blink and Node macros
-// TODO(eostroukhov): Remove once the Blink code switches to STL pointers
-#pragma push_macro("ASSERT")
-#pragma push_macro("NO_RETURN")
-#undef ASSERT
-#undef NO_RETURN
+#include "node.h"
+#include "env.h"
+#include "env-inl.h"
+#include "node_version.h"
+#include "v8-platform.h"
+#include "util.h"
 
 #include "platform/v8_inspector/public/V8Inspector.h"
 #include "platform/inspector_protocol/FrontendChannel.h"
@@ -13,16 +13,6 @@
 #include "platform/inspector_protocol/Values.h"
 
 #include "libplatform/libplatform.h"
-
-#pragma pop_macro("NO_RETURN")
-#pragma pop_macro("ASSERT")
-
-#include "env.h"
-#include "env-inl.h"
-#include "node.h"
-#include "node_version.h"
-#include "v8-platform.h"
-#include "util.h"
 
 #include <string.h>
 
@@ -35,6 +25,7 @@
 #include <unistd.h>  // setuid, getuid
 #endif
 
+namespace node {
 namespace {
 
 const char DEVTOOLS_PATH[] = "/node";
@@ -69,9 +60,8 @@ void OnBufferAlloc(uv_handle_t* handle, size_t len, uv_buf_t* buf) {
   buf->len = len;
 }
 
-void SendHttpResponse(inspector_socket_t* socket,
-                        const char* response,
-                        size_t len) {
+void SendHttpResponse(inspector_socket_t* socket, const char* response,
+                      size_t len) {
   const char HEADERS[] = "HTTP/1.0 200 OK\r\n"
                          "Content-Type: application/json; charset=UTF-8\r\n"
                          "Cache-Control: no-cache\r\n"
@@ -93,8 +83,8 @@ void SendVersionResponse(inspector_socket_t* socket) {
       "  \"WebKit-Version\": \"537.36 (@198122)\""
       "} ]";
   char buffer[sizeof(VERSION_RESPONSE_TEMPLATE) + 128];
-  size_t len = snprintf(buffer, sizeof(buffer),
-                        VERSION_RESPONSE_TEMPLATE, NODE_VERSION);
+  size_t len = snprintf(buffer, sizeof(buffer), VERSION_RESPONSE_TEMPLATE,
+                        NODE_VERSION);
   ASSERT_LT(len, sizeof(buffer));
   SendHttpResponse(socket, buffer, len);
 }
@@ -151,7 +141,6 @@ bool RespondToGet(inspector_socket_t* socket, const char* path) {
 
 }  // namespace
 
-namespace node {
 namespace inspector {
 
 using blink::protocol::DictionaryValue;
