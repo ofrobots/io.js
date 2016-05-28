@@ -269,6 +269,8 @@
             'deps/v8_inspector/deps/wtf', # temporary
             '<(SHARED_INTERMEDIATE_DIR)/blink', # for inspector
           ],
+        }, {
+          'defines': [ 'HAVE_INSPECTOR=0' ]
         }],
         [ 'node_use_openssl=="true"', {
           'defines': [ 'HAVE_OPENSSL=1' ],
@@ -731,7 +733,7 @@
         'GTEST_DONT_DEFINE_ASSERT_NE=1',
       ],
       'sources': [
-        'test/cctest/util.cc'
+        'test/cctest/util.cc',
       ],
 
       'conditions': [
