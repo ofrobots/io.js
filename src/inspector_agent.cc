@@ -31,7 +31,7 @@ namespace node {
 namespace {
 
 const char DEVTOOLS_PATH[] = "/node";
-const char DEVTOOLS_HASH[] = "521e5b7e2b7cc66b4006a8a54cb9c4e57494a5ef";
+const char DEVTOOLS_HASH[] = "1dc6dbe22945058cf5cee6ace9c9377732476daf";
 
 void PrintDebuggerReadyMessage(int port) {
   fprintf(stderr, "Debugger listening on port %d.\n"
@@ -237,21 +237,19 @@ class ChannelImpl final : public blink::protocol::FrontendChannel {
   explicit ChannelImpl(AgentImpl* agent): agent_(agent) {}
   virtual ~ChannelImpl() {}
  private:
-  virtual void sendProtocolResponse(int sessionId, int callId,
-                                    std::unique_ptr<DictionaryValue> message)
+  virtual void sendProtocolResponse(int callId, const String16& message)
                                     override {
     sendMessageToFrontend(std::move(message));
   }
 
-  virtual void sendProtocolNotification(
-      std::unique_ptr<DictionaryValue> message) override {
+  virtual void sendProtocolNotification(const String16& message) override {
     sendMessageToFrontend(std::move(message));
   }
 
-  virtual void flush() override { }
+  virtual void flushProtocolNotifications() override { }
 
-  void sendMessageToFrontend(std::unique_ptr<DictionaryValue> message) {
-    agent_->Write(message->toJSONString().utf8());
+  void sendMessageToFrontend(const String16& message) {
+    agent_->Write(message.utf8());
   }
 
   AgentImpl* const agent_;

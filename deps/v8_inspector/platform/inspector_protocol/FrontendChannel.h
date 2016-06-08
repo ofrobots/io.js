@@ -31,12 +31,12 @@
 namespace blink {
 namespace protocol {
 
-class FrontendChannel {
+class PLATFORM_EXPORT FrontendChannel {
 public:
     virtual ~FrontendChannel() { }
-    virtual void sendProtocolResponse(int sessionId, int callId, std::unique_ptr<protocol::DictionaryValue> message) = 0;
-    virtual void sendProtocolNotification(std::unique_ptr<protocol::DictionaryValue> message) = 0;
-    virtual void flush() = 0;
+    virtual void sendProtocolResponse(int callId, const String16& message) = 0;
+    virtual void sendProtocolNotification(const String16& message) = 0;
+    virtual void flushProtocolNotifications() = 0;
 };
 
 } // namespace protocol

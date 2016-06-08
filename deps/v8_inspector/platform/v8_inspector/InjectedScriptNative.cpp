@@ -5,7 +5,6 @@
 #include "platform/v8_inspector/InjectedScriptNative.h"
 
 #include "platform/inspector_protocol/Values.h"
-#include "wtf/Assertions.h"
 
 namespace blink {
 
@@ -95,3 +94,4 @@ String16 InjectedScriptNative::groupName(int objectId) const
 }
 
 } // namespace blink
+
