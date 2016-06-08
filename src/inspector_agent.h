@@ -11,7 +11,7 @@ class Environment;
 }  // namespace node
 
 namespace v8 {
-  class Platform;
+class Platform;
 }  // namespace v8
 
 namespace node {

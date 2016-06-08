@@ -80,8 +80,7 @@ void SendVersionResponse(inspector_socket_t* socket) {
       "[ {"
       "  \"Browser\": \"node.js/%s\","
       "  \"Protocol-Version\": \"1.1\","
-      "  \"User-AgentImpl\": \"Mozilla/5.0 (X11; Linux x86_64) "
-            "AppleWebKit/537.36"
+      "  \"User-Agent\": \"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
             "(KHTML, like Gecko) Chrome/45.0.2446.0 Safari/537.36\","
       "  \"WebKit-Version\": \"537.36 (@198122)\""
       "} ]";
