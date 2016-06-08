@@ -1,9 +1,9 @@
 'use strict';
 const nodeDocUrl = '';
 const jsDocUrl = 'https://developer.mozilla.org/en-US/docs/Web/JavaScript/' +
-  'Reference/Global_Objects/';
+                 'Reference/Global_Objects/';
 const jsPrimitiveUrl = 'https://developer.mozilla.org/en-US/docs/Web/' +
-  'JavaScript/Data_structures';
+                       'JavaScript/Data_structures';
 const jsPrimitives = [
   'Number', 'String', 'Boolean', 'Null', 'Symbol'
 ];
@@ -11,7 +11,8 @@ const jsGlobalTypes = [
   'Error', 'Object', 'Function', 'Array', 'Uint8Array',
   'Uint16Array', 'Uint32Array', 'Int8Array', 'Int16Array', 'Int32Array',
   'Uint8ClampedArray', 'Float32Array', 'Float64Array', 'Date', 'RegExp',
-  'ArrayBuffer', 'DataView', 'Promise'
+  'ArrayBuffer', 'DataView', 'Promise', 'EvalError', 'RangeError',
+  'ReferenceError', 'SyntaxError', 'TypeError', 'URIError'
 ];
 const typeMap = {
   'Buffer': 'buffer.html#buffer_class_buffer',
@@ -23,7 +24,7 @@ const typeMap = {
   'cluster.Worker': 'cluster.html#cluster_class_worker',
   'dgram.Socket': 'dgram.html#dgram_class_dgram_socket',
   'net.Socket': 'net.html#net_class_net_socket',
-  'EventEmitter': 'events.html#events_class_events_eventemitter',
+  'EventEmitter': 'events.html#events_class_eventemitter',
   'Timer': 'timers.html#timers_timers'
 };
 

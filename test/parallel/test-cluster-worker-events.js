@@ -14,7 +14,8 @@ if (cluster.isMaster) {
     process.exit(0);
   });
 
-  worker.send('SOME MESSAGE');
+  const result = worker.send('SOME MESSAGE');
+  assert.strictEqual(result, true);
 
   return;
 }
@@ -46,7 +47,7 @@ function check(m) {
 
   if (messages.length < 2) return;
 
-  assert.deepEqual(messages[0], messages[1]);
+  assert.deepStrictEqual(messages[0], messages[1]);
 
   cluster.worker.once('error', function(e) {
     assert.equal(e, 'HI');

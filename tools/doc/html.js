@@ -1,26 +1,42 @@
 'use strict';
 
-var fs = require('fs');
-var marked = require('marked');
-var path = require('path');
-var preprocess = require('./preprocess.js');
-var typeParser = require('./type-parser.js');
+const common = require('./common.js');
+const fs = require('fs');
+const marked = require('marked');
+const path = require('path');
+const preprocess = require('./preprocess.js');
+const typeParser = require('./type-parser.js');
 
 module.exports = toHTML;
+
+// customized heading without id attribute
+var renderer = new marked.Renderer();
+renderer.heading = function(text, level) {
+  return '<h' + level + '>' + text + '</h' + level + '>\n';
+};
+marked.setOptions({
+  renderer: renderer
+});
 
 // TODO(chrisdickinson): never stop vomitting / fix this.
 var gtocPath = path.resolve(path.join(
   __dirname,
-    '..',
-    '..',
-    'doc',
-    'api',
-    '_toc.markdown'
+  '..',
+  '..',
+  'doc',
+  'api',
+  '_toc.md'
 ));
 var gtocLoading = null;
 var gtocData = null;
 
-function toHTML(input, filename, template, cb) {
+/**
+ * opts: input, filename, template, nodeVersion.
+ */
+function toHTML(opts, cb) {
+  var template = opts.template;
+  var nodeVersion = opts.nodeVersion || process.version;
+
   if (gtocData) {
     return onGtocLoaded();
   }
@@ -41,10 +57,15 @@ function toHTML(input, filename, template, cb) {
   }
 
   function onGtocLoaded() {
-    var lexed = marked.lexer(input);
+    var lexed = marked.lexer(opts.input);
     fs.readFile(template, 'utf8', function(er, template) {
       if (er) return cb(er);
-      render(lexed, filename, template, cb);
+      render({
+        lexed: lexed,
+        filename: opts.filename,
+        template: template,
+        nodeVersion: nodeVersion,
+      }, cb);
     });
   }
 }
@@ -71,11 +92,19 @@ function toID(filename) {
     .replace(/-+/g, '-');
 }
 
-function render(lexed, filename, template, cb) {
+/**
+ * opts: lexed, filename, template, nodeVersion.
+ */
+function render(opts, cb) {
+  var lexed = opts.lexed;
+  var filename = opts.filename;
+  var template = opts.template;
+  var nodeVersion = opts.nodeVersion || process.version;
+
   // get the section
   var section = getSection(lexed);
 
-  filename = path.basename(filename, '.markdown');
+  filename = path.basename(filename, '.md');
 
   parseText(lexed);
   lexed = parseLists(lexed);
@@ -90,7 +119,7 @@ function render(lexed, filename, template, cb) {
     template = template.replace(/__ID__/g, id);
     template = template.replace(/__FILENAME__/g, filename);
     template = template.replace(/__SECTION__/g, section);
-    template = template.replace(/__VERSION__/g, process.version);
+    template = template.replace(/__VERSION__/g, nodeVersion);
     template = template.replace(/__TOC__/g, toc);
     template = template.replace(
       /__GTOC__/g,
@@ -112,6 +141,7 @@ function parseText(lexed) {
   lexed.forEach(function(tok) {
     if (tok.text && tok.type !== 'code') {
       tok.text = linkManPages(tok.text);
+      tok.text = linkJsTypeDocs(tok.text);
     }
   });
 }
@@ -141,11 +171,14 @@ function parseLists(input) {
       if (tok.type === 'list_start') {
         state = 'LIST';
         if (depth === 0) {
-          output.push({ type:'html', text: '<div class="signature">' });
+          output.push({ type: 'html', text: '<div class="signature">' });
         }
         depth++;
         output.push(tok);
         return;
+      }
+      if (tok.type === 'html' && common.isYAMLBlock(tok.text)) {
+        tok.text = parseYAML(tok.text);
       }
       state = null;
       output.push(tok);
@@ -162,12 +195,9 @@ function parseLists(input) {
         output.push(tok);
         if (depth === 0) {
           state = null;
-          output.push({ type:'html', text: '</div>' });
+          output.push({ type: 'html', text: '</div>' });
         }
         return;
-      }
-      if (tok.text) {
-        tok.text = parseListItem(tok.text);
       }
     }
     output.push(tok);
@@ -176,6 +206,21 @@ function parseLists(input) {
   return output;
 }
 
+function parseYAML(text) {
+  const meta = common.extractAndParseYAML(text);
+  const html = ['<div class="api_metadata">'];
+
+  if (meta.added) {
+    html.push(`<span>Added in: ${meta.added.join(', ')}</span>`);
+  }
+
+  if (meta.deprecated) {
+    html.push(`<span>Deprecated since: ${meta.deprecated.join(', ')} </span>`);
+  }
+
+  html.push('</div>');
+  return html.join('\n');
+}
 
 // Syscalls which appear in the docs, but which only exist in BSD / OSX
 var BSD_ONLY_SYSCALLS = new Set(['lchmod']);
@@ -197,7 +242,7 @@ function linkManPages(text) {
   });
 }
 
-function parseListItem(text) {
+function linkJsTypeDocs(text) {
   var parts = text.split('`');
   var i;
   var typeMatches;
@@ -238,7 +283,21 @@ function getSection(lexed) {
 function buildToc(lexed, filename, cb) {
   var toc = [];
   var depth = 0;
+
+  const startIncludeRefRE = /^\s*<!-- \[start-include:(.+)\] -->\s*$/;
+  const endIncludeRefRE = /^\s*<!-- \[end-include:(.+)\] -->\s*$/;
+  const realFilenames = [filename];
+
   lexed.forEach(function(tok) {
+    // Keep track of the current filename along @include directives.
+    if (tok.type === 'html') {
+      let match;
+      if ((match = tok.text.match(startIncludeRefRE)) !== null)
+        realFilenames.unshift(match[1]);
+      else if (tok.text.match(endIncludeRefRE))
+        realFilenames.shift();
+    }
+
     if (tok.type !== 'heading') return;
     if (tok.depth - depth > 1) {
       return cb(new Error('Inappropriate heading level\n' +
@@ -246,7 +305,8 @@ function buildToc(lexed, filename, cb) {
     }
 
     depth = tok.depth;
-    var id = getId(filename + '_' + tok.text.trim());
+    const realFilename = path.basename(realFilenames[0], '.md');
+    const id = getId(realFilename + '_' + tok.text.trim());
     toc.push(new Array((depth - 1) * 2 + 1).join(' ') +
              '* <a href="#' + id + '">' +
              tok.text + '</a>');

@@ -2,12 +2,12 @@
 var common = require('../common');
 var assert = require('assert');
 var fs = require('fs');
-var constants = require('constants');
 
 if (!common.hasCrypto) {
-  console.log('1..0 # Skipped: missing crypto');
+  common.skip('missing crypto');
   return;
 }
+var constants = require('crypto').constants;
 var crypto = require('crypto');
 
 // Test certificates

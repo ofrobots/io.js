@@ -16,7 +16,8 @@ var shorthands = {
   'tst': 'test',
   't': 'test',
   'ddp': 'dedupe',
-  'v': 'view'
+  'v': 'view',
+  'run': 'run-script'
 }
 
 var affordances = {
@@ -85,7 +86,6 @@ var cmdList = [
   'docs',
   'repo',
   'bugs',
-  'faq',
   'root',
   'prefix',
   'bin',
