@@ -2093,7 +2093,29 @@ static void InitGroups(const FunctionCallbackInfo<Value>& args) {
 #endif  // __POSIX__ && !defined(__ANDROID__)
 
 
+static void WaitForInspectorDisconnect(Environment* env) {
+#if HAVE_INSPECTOR
+  if (env->inspector_agent()->connected()) {
+    // Restore signal dispositions, the app is done and is no longer
+    // capable of handling signals.
+#ifdef __POSIX__
+    struct sigaction act;
+    memset(&act, 0, sizeof(act));
+    for (unsigned nr = 1; nr < 32; nr += 1) {
+      if (nr == SIGKILL || nr == SIGSTOP || nr == SIGPROF)
+        continue;
+      act.sa_handler = (nr == SIGPIPE) ? SIG_IGN : SIG_DFL;
+      CHECK_EQ(0, sigaction(nr, &act, nullptr));
+    }
+#endif
+    env->inspector_agent()->WaitForDisconnect();
+  }
+#endif
+}
+
+
 void Exit(const FunctionCallbackInfo<Value>& args) {
+  WaitForInspectorDisconnect(Environment::GetCurrent(args));
   exit(args[0]->Int32Value());
 }
 
@@ -4292,24 +4314,7 @@ static void StartNodeInstance(void* arg) {
       instance_data->set_exit_code(exit_code);
     RunAtExit(&env);
 
-#if HAVE_INSPECTOR
-    if (env.inspector_agent()->connected()) {
-      // Restore signal dispositions, the app is done and is no longer
-      // capable of handling signals.
-#ifdef __POSIX__
-      struct sigaction act;
-      memset(&act, 0, sizeof(act));
-      for (unsigned nr = 1; nr < 32; nr += 1) {
-        if (nr == SIGKILL || nr == SIGSTOP || nr == SIGPROF)
-          continue;
-        act.sa_handler = (nr == SIGPIPE) ? SIG_IGN : SIG_DFL;
-        CHECK_EQ(0, sigaction(nr, &act, nullptr));
-      }
-#endif
-      env.inspector_agent()->WaitForDisconnect();
-    }
-#endif
-
+    WaitForInspectorDisconnect(&env);
 #if defined(LEAK_SANITIZER)
     __lsan_do_leak_check();
 #endif
