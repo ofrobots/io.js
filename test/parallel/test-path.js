@@ -15,6 +15,23 @@ assert.equal(path.basename('/basename.ext'), 'basename.ext');
 assert.equal(path.basename('basename.ext'), 'basename.ext');
 assert.equal(path.basename('basename.ext/'), 'basename.ext');
 assert.equal(path.basename('basename.ext//'), 'basename.ext');
+assert.equal(path.basename('aaa/bbb', '/bbb'), 'bbb');
+assert.equal(path.basename('aaa/bbb', 'a/bbb'), 'bbb');
+assert.equal(path.basename('aaa/bbb', 'bbb'), 'bbb');
+assert.equal(path.basename('aaa/bbb//', 'bbb'), 'bbb');
+assert.equal(path.basename('aaa/bbb', 'bb'), 'b');
+assert.equal(path.basename('aaa/bbb', 'b'), 'bb');
+assert.equal(path.basename('/aaa/bbb', '/bbb'), 'bbb');
+assert.equal(path.basename('/aaa/bbb', 'a/bbb'), 'bbb');
+assert.equal(path.basename('/aaa/bbb', 'bbb'), 'bbb');
+assert.equal(path.basename('/aaa/bbb//', 'bbb'), 'bbb');
+assert.equal(path.basename('/aaa/bbb', 'bb'), 'b');
+assert.equal(path.basename('/aaa/bbb', 'b'), 'bb');
+assert.equal(path.basename('/aaa/bbb'), 'bbb');
+assert.equal(path.basename('/aaa/'), 'aaa');
+assert.equal(path.basename('/aaa/b'), 'b');
+assert.equal(path.basename('/a/b'), 'b');
+assert.equal(path.basename('//a'), 'a');
 
 // On Windows a backslash acts as a path separator.
 assert.equal(path.win32.basename('\\dir\\basename.ext'), 'basename.ext');
@@ -23,11 +40,12 @@ assert.equal(path.win32.basename('basename.ext'), 'basename.ext');
 assert.equal(path.win32.basename('basename.ext\\'), 'basename.ext');
 assert.equal(path.win32.basename('basename.ext\\\\'), 'basename.ext');
 assert.equal(path.win32.basename('foo'), 'foo');
-assert.throws(path.win32.basename.bind(null, null), TypeError);
-assert.throws(path.win32.basename.bind(null, true), TypeError);
-assert.throws(path.win32.basename.bind(null, 1), TypeError);
-assert.throws(path.win32.basename.bind(null), TypeError);
-assert.throws(path.win32.basename.bind(null, {}), TypeError);
+assert.equal(path.win32.basename('aaa\\bbb', '\\bbb'), 'bbb');
+assert.equal(path.win32.basename('aaa\\bbb', 'a\\bbb'), 'bbb');
+assert.equal(path.win32.basename('aaa\\bbb', 'bbb'), 'bbb');
+assert.equal(path.win32.basename('aaa\\bbb\\\\\\\\', 'bbb'), 'bbb');
+assert.equal(path.win32.basename('aaa\\bbb', 'bb'), 'b');
+assert.equal(path.win32.basename('aaa\\bbb', 'b'), 'bb');
 
 // On unix a backslash is just treated as any other character.
 assert.equal(path.posix.basename('\\dir\\basename.ext'), '\\dir\\basename.ext');
@@ -36,11 +54,6 @@ assert.equal(path.posix.basename('basename.ext'), 'basename.ext');
 assert.equal(path.posix.basename('basename.ext\\'), 'basename.ext\\');
 assert.equal(path.posix.basename('basename.ext\\\\'), 'basename.ext\\\\');
 assert.equal(path.posix.basename('foo'), 'foo');
-assert.throws(path.posix.basename.bind(null, null), TypeError);
-assert.throws(path.posix.basename.bind(null, true), TypeError);
-assert.throws(path.posix.basename.bind(null, 1), TypeError);
-assert.throws(path.posix.basename.bind(null), TypeError);
-assert.throws(path.posix.basename.bind(null, {}), TypeError);
 
 // POSIX filenames may include control characters
 // c.f. http://www.dwheeler.com/essays/fixing-unix-linux-filenames.html
@@ -60,11 +73,6 @@ assert.equal(path.posix.dirname(''), '.');
 assert.equal(path.posix.dirname('/'), '/');
 assert.equal(path.posix.dirname('////'), '/');
 assert.equal(path.posix.dirname('foo'), '.');
-assert.throws(path.posix.dirname.bind(null, null), TypeError);
-assert.throws(path.posix.dirname.bind(null, true), TypeError);
-assert.throws(path.posix.dirname.bind(null, 1), TypeError);
-assert.throws(path.posix.dirname.bind(null), TypeError);
-assert.throws(path.posix.dirname.bind(null, {}), TypeError);
 
 assert.equal(path.win32.dirname('c:\\'), 'c:\\');
 assert.equal(path.win32.dirname('c:\\foo'), 'c:\\');
@@ -100,11 +108,6 @@ assert.equal(path.win32.dirname(''), '.');
 assert.equal(path.win32.dirname('/'), '/');
 assert.equal(path.win32.dirname('////'), '/');
 assert.equal(path.win32.dirname('foo'), '.');
-assert.throws(path.win32.dirname.bind(null, null), TypeError);
-assert.throws(path.win32.dirname.bind(null, true), TypeError);
-assert.throws(path.win32.dirname.bind(null, 1), TypeError);
-assert.throws(path.win32.dirname.bind(null), TypeError);
-assert.throws(path.win32.dirname.bind(null, {}), TypeError);
 
 
 // path.extname tests
@@ -155,13 +158,16 @@ assert.throws(path.win32.dirname.bind(null, {}), TypeError);
 ].forEach(function(test) {
   [path.posix.extname, path.win32.extname].forEach(function(extname) {
     let input = test[0];
-    if (extname === path.win32.extname)
+    let os;
+    if (extname === path.win32.extname) {
       input = input.replace(/\//g, '\\');
+      os = 'win32';
+    } else {
+      os = 'posix';
+    }
     const actual = extname(input);
     const expected = test[1];
-    const fn = 'path.' +
-               (extname === path.win32.extname ? 'win32' : 'posix') +
-               '.extname(';
+    const fn = `path.${os}.extname(`;
     const message = fn + JSON.stringify(input) + ')' +
                     '\n  expect=' + JSON.stringify(expected) +
                     '\n  actual=' + JSON.stringify(actual);
@@ -180,11 +186,6 @@ assert.equal(path.win32.extname('file\\'), '');
 assert.equal(path.win32.extname('file\\\\'), '');
 assert.equal(path.win32.extname('file.\\'), '.');
 assert.equal(path.win32.extname('file.\\\\'), '.');
-assert.throws(path.win32.extname.bind(null, null), TypeError);
-assert.throws(path.win32.extname.bind(null, true), TypeError);
-assert.throws(path.win32.extname.bind(null, 1), TypeError);
-assert.throws(path.win32.extname.bind(null), TypeError);
-assert.throws(path.win32.extname.bind(null, {}), TypeError);
 
 // On *nix, backslash is a valid name component like any other character.
 assert.equal(path.posix.extname('.\\'), '');
@@ -195,11 +196,6 @@ assert.equal(path.posix.extname('file\\'), '');
 assert.equal(path.posix.extname('file\\\\'), '');
 assert.equal(path.posix.extname('file.\\'), '.\\');
 assert.equal(path.posix.extname('file.\\\\'), '.\\\\');
-assert.throws(path.posix.extname.bind(null, null), TypeError);
-assert.throws(path.posix.extname.bind(null, true), TypeError);
-assert.throws(path.posix.extname.bind(null, 1), TypeError);
-assert.throws(path.posix.extname.bind(null), TypeError);
-assert.throws(path.posix.extname.bind(null, {}), TypeError);
 
 
 // path.join tests
@@ -319,11 +315,15 @@ joinTests.forEach(function(test) {
       // For non-Windows specific tests with the Windows join(), we need to try
       // replacing the slashes since the non-Windows specific tests' `expected`
       // use forward slashes
-      const actualAlt = (join === path.win32.join) ?
-        actual.replace(/\\/g, '/') : undefined;
-      const fn = 'path.' +
-                 (join === path.win32.join ? 'win32' : 'posix') +
-                 '.join(';
+      let actualAlt;
+      let os;
+      if (join === path.win32.join) {
+        actualAlt = actual.replace(/\\/g, '/');
+        os = 'win32';
+      } else {
+        os = 'posix';
+      }
+      const fn = `path.${os}.join(`;
       const message = fn + test[0].map(JSON.stringify).join(',') + ')' +
                       '\n  expect=' + JSON.stringify(expected) +
                       '\n  actual=' + JSON.stringify(actual);
@@ -423,14 +423,14 @@ resolveTests.forEach(function(test) {
   test[1].forEach(function(test) {
     const actual = resolve.apply(null, test[0]);
     let actualAlt;
+    const os = resolve === path.win32.resolve ? 'win32' : 'posix';
     if (resolve === path.win32.resolve && !common.isWindows)
       actualAlt = actual.replace(/\\/g, '/');
     else if (resolve !== path.win32.resolve && common.isWindows)
       actualAlt = actual.replace(/\//g, '\\');
+
     const expected = test[1];
-    const fn = 'path.' +
-               (resolve === path.win32.resolve ? 'win32' : 'posix') +
-               '.resolve(';
+    const fn = `path.${os}.resolve(`;
     const message = fn + test[0].map(JSON.stringify).join(',') + ')' +
                     '\n  expect=' + JSON.stringify(expected) +
                     '\n  actual=' + JSON.stringify(actual);
@@ -517,9 +517,8 @@ relativeTests.forEach(function(test) {
   test[1].forEach(function(test) {
     const actual = relative(test[0], test[1]);
     const expected = test[2];
-    const fn = 'path.' +
-               (relative === path.win32.relative ? 'win32' : 'posix') +
-               '.relative(';
+    const os = relative === path.win32.relative ? 'win32' : 'posix';
+    const fn = `path.${os}.relative(`;
     const message = fn +
                     test.slice(0, 2).map(JSON.stringify).join(',') +
                     ')' +
@@ -561,7 +560,8 @@ if (common.isWindows) {
                '\\\\?\\' + process.cwd().toLowerCase() + '\\foo\\bar');
   assert.equal(path.win32._makeLong('foo/bar').toLowerCase(),
                '\\\\?\\' + process.cwd().toLowerCase() + '\\foo\\bar');
-  assert.equal(path.win32._makeLong('C:').toLowerCase(),
+  const currentDeviceLetter = path.parse(process.cwd()).root.substring(0, 2);
+  assert.equal(path.win32._makeLong(currentDeviceLetter).toLowerCase(),
                '\\\\?\\' + process.cwd().toLowerCase());
   assert.equal(path.win32._makeLong('C').toLowerCase(),
                '\\\\?\\' + process.cwd().toLowerCase() + '\\c');
@@ -579,6 +579,6 @@ assert.equal(path.win32._makeLong(emptyObj), emptyObj);
 
 
 if (common.isWindows)
-  assert.deepEqual(path, path.win32, 'should be win32 path module');
+  assert.deepStrictEqual(path, path.win32, 'should be win32 path module');
 else
-  assert.deepEqual(path, path.posix, 'should be posix path module');
+  assert.deepStrictEqual(path, path.posix, 'should be posix path module');

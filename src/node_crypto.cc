@@ -24,16 +24,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#if defined(_MSC_VER)
-#define strcasecmp _stricmp
-#endif
-
-#if OPENSSL_VERSION_NUMBER >= 0x10000000L
-#define OPENSSL_CONST const
-#else
-#define OPENSSL_CONST
-#endif
-
 #define THROW_AND_RETURN_IF_NOT_STRING_OR_BUFFER(val, prefix)                  \
   do {                                                                         \
     if (!Buffer::HasInstance(val) && !val->IsString()) {                       \
@@ -348,10 +338,11 @@ void SecureContext::New(const FunctionCallbackInfo<Value>& args) {
 
 
 void SecureContext::Init(const FunctionCallbackInfo<Value>& args) {
-  SecureContext* sc = Unwrap<SecureContext>(args.Holder());
+  SecureContext* sc;
+  ASSIGN_OR_RETURN_UNWRAP(&sc, args.Holder());
   Environment* env = sc->env();
 
-  OPENSSL_CONST SSL_METHOD *method = SSLv23_method();
+  const SSL_METHOD* method = SSLv23_method();
 
   if (args.Length() == 1 && args[0]->IsString()) {
     const node::Utf8Value sslmethod(env->isolate(), args[0]);
@@ -444,7 +435,8 @@ static BIO* LoadBIO(Environment* env, Local<Value> v) {
 void SecureContext::SetKey(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
 
-  SecureContext* sc = Unwrap<SecureContext>(args.Holder());
+  SecureContext* sc;
+  ASSIGN_OR_RETURN_UNWRAP(&sc, args.Holder());
 
   unsigned int len = args.Length();
   if (len < 1) {
@@ -649,7 +641,8 @@ int SSL_CTX_use_certificate_chain(SSL_CTX* ctx,
 void SecureContext::SetCert(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
 
-  SecureContext* sc = Unwrap<SecureContext>(args.Holder());
+  SecureContext* sc;
+  ASSIGN_OR_RETURN_UNWRAP(&sc, args.Holder());
 
   if (args.Length() != 1) {
     return env->ThrowTypeError("Certificate argument is mandatory");
@@ -690,7 +683,8 @@ void SecureContext::AddCACert(const FunctionCallbackInfo<Value>& args) {
   bool newCAStore = false;
   Environment* env = Environment::GetCurrent(args);
 
-  SecureContext* sc = Unwrap<SecureContext>(args.Holder());
+  SecureContext* sc;
+  ASSIGN_OR_RETURN_UNWRAP(&sc, args.Holder());
   ClearErrorOnReturn clear_error_on_return;
   (void) &clear_error_on_return;  // Silence compiler warning.
 
@@ -724,7 +718,8 @@ void SecureContext::AddCACert(const FunctionCallbackInfo<Value>& args) {
 void SecureContext::AddCRL(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
 
-  SecureContext* sc = Unwrap<SecureContext>(args.Holder());
+  SecureContext* sc;
+  ASSIGN_OR_RETURN_UNWRAP(&sc, args.Holder());
 
   if (args.Length() != 1) {
     return env->ThrowTypeError("CRL argument is mandatory");
@@ -755,7 +750,8 @@ void SecureContext::AddCRL(const FunctionCallbackInfo<Value>& args) {
 
 
 void SecureContext::AddRootCerts(const FunctionCallbackInfo<Value>& args) {
-  SecureContext* sc = Unwrap<SecureContext>(args.Holder());
+  SecureContext* sc;
+  ASSIGN_OR_RETURN_UNWRAP(&sc, args.Holder());
   ClearErrorOnReturn clear_error_on_return;
   (void) &clear_error_on_return;  // Silence compiler warning.
 
@@ -789,7 +785,8 @@ void SecureContext::AddRootCerts(const FunctionCallbackInfo<Value>& args) {
 
 
 void SecureContext::SetCiphers(const FunctionCallbackInfo<Value>& args) {
-  SecureContext* sc = Unwrap<SecureContext>(args.Holder());
+  SecureContext* sc;
+  ASSIGN_OR_RETURN_UNWRAP(&sc, args.Holder());
   Environment* env = sc->env();
   ClearErrorOnReturn clear_error_on_return;
   (void) &clear_error_on_return;  // Silence compiler warning.
@@ -806,7 +803,8 @@ void SecureContext::SetCiphers(const FunctionCallbackInfo<Value>& args) {
 
 
 void SecureContext::SetECDHCurve(const FunctionCallbackInfo<Value>& args) {
-  SecureContext* sc = Unwrap<SecureContext>(args.Holder());
+  SecureContext* sc;
+  ASSIGN_OR_RETURN_UNWRAP(&sc, args.Holder());
   Environment* env = sc->env();
 
   if (args.Length() != 1)
@@ -834,7 +832,8 @@ void SecureContext::SetECDHCurve(const FunctionCallbackInfo<Value>& args) {
 
 
 void SecureContext::SetDHParam(const FunctionCallbackInfo<Value>& args) {
-  SecureContext* sc = Unwrap<SecureContext>(args.This());
+  SecureContext* sc;
+  ASSIGN_OR_RETURN_UNWRAP(&sc, args.This());
   Environment* env = sc->env();
   ClearErrorOnReturn clear_error_on_return;
   (void) &clear_error_on_return;  // Silence compiler warning.
@@ -873,7 +872,8 @@ void SecureContext::SetDHParam(const FunctionCallbackInfo<Value>& args) {
 
 
 void SecureContext::SetOptions(const FunctionCallbackInfo<Value>& args) {
-  SecureContext* sc = Unwrap<SecureContext>(args.Holder());
+  SecureContext* sc;
+  ASSIGN_OR_RETURN_UNWRAP(&sc, args.Holder());
 
   if (args.Length() != 1 || !args[0]->IntegerValue()) {
     return sc->env()->ThrowTypeError("Options must be an integer value");
@@ -885,7 +885,8 @@ void SecureContext::SetOptions(const FunctionCallbackInfo<Value>& args) {
 
 void SecureContext::SetSessionIdContext(
     const FunctionCallbackInfo<Value>& args) {
-  SecureContext* sc = Unwrap<SecureContext>(args.Holder());
+  SecureContext* sc;
+  ASSIGN_OR_RETURN_UNWRAP(&sc, args.Holder());
   Environment* env = sc->env();
 
   if (args.Length() != 1) {
@@ -923,7 +924,8 @@ void SecureContext::SetSessionIdContext(
 
 
 void SecureContext::SetSessionTimeout(const FunctionCallbackInfo<Value>& args) {
-  SecureContext* sc = Unwrap<SecureContext>(args.Holder());
+  SecureContext* sc;
+  ASSIGN_OR_RETURN_UNWRAP(&sc, args.Holder());
 
   if (args.Length() != 1 || !args[0]->IsInt32()) {
     return sc->env()->ThrowTypeError(
@@ -936,7 +938,8 @@ void SecureContext::SetSessionTimeout(const FunctionCallbackInfo<Value>& args) {
 
 
 void SecureContext::Close(const FunctionCallbackInfo<Value>& args) {
-  SecureContext* sc = Unwrap<SecureContext>(args.Holder());
+  SecureContext* sc;
+  ASSIGN_OR_RETURN_UNWRAP(&sc, args.Holder());
   sc->FreeCTXMem();
 }
 
@@ -953,7 +956,8 @@ void SecureContext::LoadPKCS12(const FunctionCallbackInfo<Value>& args) {
   char* pass = nullptr;
   bool ret = false;
 
-  SecureContext* sc = Unwrap<SecureContext>(args.Holder());
+  SecureContext* sc;
+  ASSIGN_OR_RETURN_UNWRAP(&sc, args.Holder());
   ClearErrorOnReturn clear_error_on_return;
   (void) &clear_error_on_return;  // Silence compiler warning.
 
@@ -1028,7 +1032,8 @@ void SecureContext::LoadPKCS12(const FunctionCallbackInfo<Value>& args) {
 void SecureContext::GetTicketKeys(const FunctionCallbackInfo<Value>& args) {
 #if !defined(OPENSSL_NO_TLSEXT) && defined(SSL_CTX_get_tlsext_ticket_keys)
 
-  SecureContext* wrap = Unwrap<SecureContext>(args.Holder());
+  SecureContext* wrap;
+  ASSIGN_OR_RETURN_UNWRAP(&wrap, args.Holder());
 
   Local<Object> buff = Buffer::New(wrap->env(), 48).ToLocalChecked();
   if (SSL_CTX_get_tlsext_ticket_keys(wrap->ctx_,
@@ -1044,7 +1049,8 @@ void SecureContext::GetTicketKeys(const FunctionCallbackInfo<Value>& args) {
 
 void SecureContext::SetTicketKeys(const FunctionCallbackInfo<Value>& args) {
 #if !defined(OPENSSL_NO_TLSEXT) && defined(SSL_CTX_get_tlsext_ticket_keys)
-  SecureContext* wrap = Unwrap<SecureContext>(args.Holder());
+  SecureContext* wrap;
+  ASSIGN_OR_RETURN_UNWRAP(&wrap, args.Holder());
   Environment* env = wrap->env();
 
   if (args.Length() < 1) {
@@ -1069,7 +1075,8 @@ void SecureContext::SetTicketKeys(const FunctionCallbackInfo<Value>& args) {
 
 
 void SecureContext::SetFreeListLength(const FunctionCallbackInfo<Value>& args) {
-  SecureContext* wrap = Unwrap<SecureContext>(args.Holder());
+  SecureContext* wrap;
+  ASSIGN_OR_RETURN_UNWRAP(&wrap, args.Holder());
 
   wrap->ctx_->freelist_max_len = args[0]->Int32Value();
 }
@@ -1077,7 +1084,8 @@ void SecureContext::SetFreeListLength(const FunctionCallbackInfo<Value>& args) {
 
 void SecureContext::EnableTicketKeyCallback(
     const FunctionCallbackInfo<Value>& args) {
-  SecureContext* wrap = Unwrap<SecureContext>(args.Holder());
+  SecureContext* wrap;
+  ASSIGN_OR_RETURN_UNWRAP(&wrap, args.Holder());
 
   SSL_CTX_set_tlsext_ticket_key_cb(wrap->ctx_, TicketKeyCallback);
 }
@@ -1166,15 +1174,17 @@ int SecureContext::TicketKeyCallback(SSL* ssl,
 
 void SecureContext::CtxGetter(Local<String> property,
                               const PropertyCallbackInfo<Value>& info) {
-  SSL_CTX* ctx = Unwrap<SecureContext>(info.This())->ctx_;
-  Local<External> ext = External::New(info.GetIsolate(), ctx);
+  SecureContext* sc;
+  ASSIGN_OR_RETURN_UNWRAP(&sc, info.This());
+  Local<External> ext = External::New(info.GetIsolate(), sc->ctx_);
   info.GetReturnValue().Set(ext);
 }
 
 
 template <bool primary>
 void SecureContext::GetCertificate(const FunctionCallbackInfo<Value>& args) {
-  SecureContext* wrap = Unwrap<SecureContext>(args.Holder());
+  SecureContext* wrap;
+  ASSIGN_OR_RETURN_UNWRAP(&wrap, args.Holder());
   Environment* env = wrap->env();
   X509* cert;
 
@@ -1553,7 +1563,8 @@ static Local<Object> X509ToObject(Environment* env, X509* cert) {
 template <class Base>
 void SSLWrap<Base>::GetPeerCertificate(
     const FunctionCallbackInfo<Value>& args) {
-  Base* w = Unwrap<Base>(args.Holder());
+  Base* w;
+  ASSIGN_OR_RETURN_UNWRAP(&w, args.Holder());
   Environment* env = w->ssl_env();
 
   ClearErrorOnReturn clear_error_on_return;
@@ -1661,7 +1672,8 @@ template <class Base>
 void SSLWrap<Base>::GetSession(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
 
-  Base* w = Unwrap<Base>(args.Holder());
+  Base* w;
+  ASSIGN_OR_RETURN_UNWRAP(&w, args.Holder());
 
   SSL_SESSION* sess = SSL_get_session(w->ssl_);
   if (sess == nullptr)
@@ -1682,7 +1694,8 @@ template <class Base>
 void SSLWrap<Base>::SetSession(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
 
-  Base* w = Unwrap<Base>(args.Holder());
+  Base* w;
+  ASSIGN_OR_RETURN_UNWRAP(&w, args.Holder());
 
   if (args.Length() < 1) {
     return env->ThrowError("Session argument is mandatory");
@@ -1711,7 +1724,8 @@ void SSLWrap<Base>::SetSession(const FunctionCallbackInfo<Value>& args) {
 
 template <class Base>
 void SSLWrap<Base>::LoadSession(const FunctionCallbackInfo<Value>& args) {
-  Base* w = Unwrap<Base>(args.Holder());
+  Base* w;
+  ASSIGN_OR_RETURN_UNWRAP(&w, args.Holder());
   Environment* env = w->ssl_env();
 
   if (args.Length() >= 1 && Buffer::HasInstance(args[0])) {
@@ -1742,7 +1756,8 @@ void SSLWrap<Base>::LoadSession(const FunctionCallbackInfo<Value>& args) {
 
 template <class Base>
 void SSLWrap<Base>::IsSessionReused(const FunctionCallbackInfo<Value>& args) {
-  Base* w = Unwrap<Base>(args.Holder());
+  Base* w;
+  ASSIGN_OR_RETURN_UNWRAP(&w, args.Holder());
   bool yes = SSL_session_reused(w->ssl_);
   args.GetReturnValue().Set(yes);
 }
@@ -1750,14 +1765,16 @@ void SSLWrap<Base>::IsSessionReused(const FunctionCallbackInfo<Value>& args) {
 
 template <class Base>
 void SSLWrap<Base>::EndParser(const FunctionCallbackInfo<Value>& args) {
-  Base* w = Unwrap<Base>(args.Holder());
+  Base* w;
+  ASSIGN_OR_RETURN_UNWRAP(&w, args.Holder());
   w->hello_parser_.End();
 }
 
 
 template <class Base>
 void SSLWrap<Base>::Renegotiate(const FunctionCallbackInfo<Value>& args) {
-  Base* w = Unwrap<Base>(args.Holder());
+  Base* w;
+  ASSIGN_OR_RETURN_UNWRAP(&w, args.Holder());
 
   ClearErrorOnReturn clear_error_on_return;
   (void) &clear_error_on_return;  // Silence unused variable warning.
@@ -1769,7 +1786,8 @@ void SSLWrap<Base>::Renegotiate(const FunctionCallbackInfo<Value>& args) {
 
 template <class Base>
 void SSLWrap<Base>::Shutdown(const FunctionCallbackInfo<Value>& args) {
-  Base* w = Unwrap<Base>(args.Holder());
+  Base* w;
+  ASSIGN_OR_RETURN_UNWRAP(&w, args.Holder());
 
   int rv = SSL_shutdown(w->ssl_);
   args.GetReturnValue().Set(rv);
@@ -1778,7 +1796,8 @@ void SSLWrap<Base>::Shutdown(const FunctionCallbackInfo<Value>& args) {
 
 template <class Base>
 void SSLWrap<Base>::GetTLSTicket(const FunctionCallbackInfo<Value>& args) {
-  Base* w = Unwrap<Base>(args.Holder());
+  Base* w;
+  ASSIGN_OR_RETURN_UNWRAP(&w, args.Holder());
   Environment* env = w->ssl_env();
 
   SSL_SESSION* sess = SSL_get_session(w->ssl_);
@@ -1796,7 +1815,8 @@ void SSLWrap<Base>::GetTLSTicket(const FunctionCallbackInfo<Value>& args) {
 
 template <class Base>
 void SSLWrap<Base>::NewSessionDone(const FunctionCallbackInfo<Value>& args) {
-  Base* w = Unwrap<Base>(args.Holder());
+  Base* w;
+  ASSIGN_OR_RETURN_UNWRAP(&w, args.Holder());
   w->new_session_wait_ = false;
   w->NewSessionDoneCb();
 }
@@ -1808,7 +1828,8 @@ void SSLWrap<Base>::SetOCSPResponse(
 #ifdef NODE__HAVE_TLSEXT_STATUS_CB
   HandleScope scope(args.GetIsolate());
 
-  Base* w = Unwrap<Base>(args.Holder());
+  Base* w;
+  ASSIGN_OR_RETURN_UNWRAP(&w, args.Holder());
   Environment* env = w->env();
 
   if (args.Length() < 1)
@@ -1827,7 +1848,8 @@ void SSLWrap<Base>::RequestOCSP(
 #ifdef NODE__HAVE_TLSEXT_STATUS_CB
   HandleScope scope(args.GetIsolate());
 
-  Base* w = Unwrap<Base>(args.Holder());
+  Base* w;
+  ASSIGN_OR_RETURN_UNWRAP(&w, args.Holder());
 
   SSL_set_tlsext_status_type(w->ssl_, TLSEXT_STATUSTYPE_ocsp);
 #endif  // NODE__HAVE_TLSEXT_STATUS_CB
@@ -1837,7 +1859,8 @@ void SSLWrap<Base>::RequestOCSP(
 template <class Base>
 void SSLWrap<Base>::GetEphemeralKeyInfo(
     const v8::FunctionCallbackInfo<v8::Value>& args) {
-  Base* w = Unwrap<Base>(args.Holder());
+  Base* w;
+  ASSIGN_OR_RETURN_UNWRAP(&w, args.Holder());
   Environment* env = Environment::GetCurrent(args);
 
   CHECK_NE(w->ssl_, nullptr);
@@ -1885,7 +1908,8 @@ void SSLWrap<Base>::SetMaxSendFragment(
   HandleScope scope(args.GetIsolate());
   CHECK(args.Length() >= 1 && args[0]->IsNumber());
 
-  Base* w = Unwrap<Base>(args.Holder());
+  Base* w;
+  ASSIGN_OR_RETURN_UNWRAP(&w, args.Holder());
 
   int rv = SSL_set_max_send_fragment(w->ssl_, args[0]->Int32Value());
   args.GetReturnValue().Set(rv);
@@ -1895,7 +1919,8 @@ void SSLWrap<Base>::SetMaxSendFragment(
 
 template <class Base>
 void SSLWrap<Base>::IsInitFinished(const FunctionCallbackInfo<Value>& args) {
-  Base* w = Unwrap<Base>(args.Holder());
+  Base* w;
+  ASSIGN_OR_RETURN_UNWRAP(&w, args.Holder());
   bool yes = SSL_is_init_finished(w->ssl_);
   args.GetReturnValue().Set(yes);
 }
@@ -1903,7 +1928,8 @@ void SSLWrap<Base>::IsInitFinished(const FunctionCallbackInfo<Value>& args) {
 
 template <class Base>
 void SSLWrap<Base>::VerifyError(const FunctionCallbackInfo<Value>& args) {
-  Base* w = Unwrap<Base>(args.Holder());
+  Base* w;
+  ASSIGN_OR_RETURN_UNWRAP(&w, args.Holder());
 
   // XXX(bnoordhuis) The UNABLE_TO_GET_ISSUER_CERT error when there is no
   // peer certificate is questionable but it's compatible with what was
@@ -1966,10 +1992,11 @@ void SSLWrap<Base>::VerifyError(const FunctionCallbackInfo<Value>& args) {
 
 template <class Base>
 void SSLWrap<Base>::GetCurrentCipher(const FunctionCallbackInfo<Value>& args) {
-  Base* w = Unwrap<Base>(args.Holder());
+  Base* w;
+  ASSIGN_OR_RETURN_UNWRAP(&w, args.Holder());
   Environment* env = w->ssl_env();
 
-  OPENSSL_CONST SSL_CIPHER* c = SSL_get_current_cipher(w->ssl_);
+  const SSL_CIPHER* c = SSL_get_current_cipher(w->ssl_);
   if (c == nullptr)
     return;
 
@@ -1985,7 +2012,8 @@ void SSLWrap<Base>::GetCurrentCipher(const FunctionCallbackInfo<Value>& args) {
 
 template <class Base>
 void SSLWrap<Base>::GetProtocol(const FunctionCallbackInfo<Value>& args) {
-  Base* w = Unwrap<Base>(args.Holder());
+  Base* w;
+  ASSIGN_OR_RETURN_UNWRAP(&w, args.Holder());
 
   const char* tls_version = SSL_get_version(w->ssl_);
   args.GetReturnValue().Set(OneByteString(args.GetIsolate(), tls_version));
@@ -2089,7 +2117,8 @@ int SSLWrap<Base>::SelectNextProtoCallback(SSL* s,
 template <class Base>
 void SSLWrap<Base>::GetNegotiatedProto(
     const FunctionCallbackInfo<Value>& args) {
-  Base* w = Unwrap<Base>(args.Holder());
+  Base* w;
+  ASSIGN_OR_RETURN_UNWRAP(&w, args.Holder());
   Environment* env = w->env();
 
   if (w->is_client()) {
@@ -2116,7 +2145,8 @@ void SSLWrap<Base>::GetNegotiatedProto(
 
 template <class Base>
 void SSLWrap<Base>::SetNPNProtocols(const FunctionCallbackInfo<Value>& args) {
-  Base* w = Unwrap<Base>(args.Holder());
+  Base* w;
+  ASSIGN_OR_RETURN_UNWRAP(&w, args.Holder());
   Environment* env = w->env();
 
   if (args.Length() < 1)
@@ -2183,7 +2213,8 @@ void SSLWrap<Base>::GetALPNNegotiatedProto(
     const FunctionCallbackInfo<v8::Value>& args) {
 #ifdef TLSEXT_TYPE_application_layer_protocol_negotiation
   HandleScope scope(args.GetIsolate());
-  Base* w = Unwrap<Base>(args.Holder());
+  Base* w;
+  ASSIGN_OR_RETURN_UNWRAP(&w, args.Holder());
 
   const unsigned char* alpn_proto;
   unsigned int alpn_proto_len;
@@ -2204,7 +2235,8 @@ void SSLWrap<Base>::SetALPNProtocols(
     const FunctionCallbackInfo<v8::Value>& args) {
 #ifdef TLSEXT_TYPE_application_layer_protocol_negotiation
   HandleScope scope(args.GetIsolate());
-  Base* w = Unwrap<Base>(args.Holder());
+  Base* w;
+  ASSIGN_OR_RETURN_UNWRAP(&w, args.Holder());
   Environment* env = w->env();
   if (args.Length() < 1 || !Buffer::HasInstance(args[0]))
     return env->ThrowTypeError("Must give a Buffer as first argument");
@@ -2338,7 +2370,8 @@ int SSLWrap<Base>::SSLCertCallback(SSL* s, void* arg) {
 
 template <class Base>
 void SSLWrap<Base>::CertCbDone(const FunctionCallbackInfo<Value>& args) {
-  Base* w = Unwrap<Base>(args.Holder());
+  Base* w;
+  ASSIGN_OR_RETURN_UNWRAP(&w, args.Holder());
   Environment* env = w->env();
 
   CHECK(w->is_waiting_cert_cb() && w->cert_cb_running_);
@@ -2352,7 +2385,8 @@ void SSLWrap<Base>::CertCbDone(const FunctionCallbackInfo<Value>& args) {
     goto fire_cb;
 
   if (cons->HasInstance(ctx)) {
-    SecureContext* sc = Unwrap<SecureContext>(ctx.As<Object>());
+    SecureContext* sc;
+    ASSIGN_OR_RETURN_UNWRAP(&sc, ctx.As<Object>());
     w->sni_context_.Reset();
     w->sni_context_.Reset(env->isolate(), ctx);
 
@@ -2403,7 +2437,9 @@ void SSLWrap<Base>::CertCbDone(const FunctionCallbackInfo<Value>& args) {
 template <class Base>
 void SSLWrap<Base>::SSLGetter(Local<String> property,
                               const PropertyCallbackInfo<Value>& info) {
-  SSL* ssl = Unwrap<Base>(info.This())->ssl_;
+  Base* base;
+  ASSIGN_OR_RETURN_UNWRAP(&base, info.This());
+  SSL* ssl = base->ssl_;
   Local<External> ext = External::New(info.GetIsolate(), ssl);
   info.GetReturnValue().Set(ext);
 }
@@ -2756,7 +2792,8 @@ int Connection::SelectSNIContextCallback_(SSL *s, int *ad, void* arg) {
           env->secure_context_constructor_template();
       if (secure_context_constructor_template->HasInstance(ret)) {
         conn->sni_context_.Reset(env->isolate(), ret);
-        SecureContext* sc = Unwrap<SecureContext>(ret.As<Object>());
+        SecureContext* sc;
+        ASSIGN_OR_RETURN_UNWRAP(&sc, ret.As<Object>(), SSL_TLSEXT_ERR_NOACK);
         conn->SetSNIContext(sc);
       } else {
         return SSL_TLSEXT_ERR_NOACK;
@@ -2776,7 +2813,8 @@ void Connection::New(const FunctionCallbackInfo<Value>& args) {
     return;
   }
 
-  SecureContext* sc = Unwrap<SecureContext>(args[0]->ToObject(env->isolate()));
+  SecureContext* sc;
+  ASSIGN_OR_RETURN_UNWRAP(&sc, args[0].As<Object>());
 
   bool is_server = args[1]->BooleanValue();
 
@@ -2864,7 +2902,8 @@ void Connection::SSLInfoCallback(const SSL *ssl_, int where, int ret) {
 
 
 void Connection::EncIn(const FunctionCallbackInfo<Value>& args) {
-  Connection* conn = Unwrap<Connection>(args.Holder());
+  Connection* conn;
+  ASSIGN_OR_RETURN_UNWRAP(&conn, args.Holder());
   Environment* env = conn->env();
 
   if (args.Length() < 3) {
@@ -2912,7 +2951,8 @@ void Connection::EncIn(const FunctionCallbackInfo<Value>& args) {
 
 
 void Connection::ClearOut(const FunctionCallbackInfo<Value>& args) {
-  Connection* conn = Unwrap<Connection>(args.Holder());
+  Connection* conn;
+  ASSIGN_OR_RETURN_UNWRAP(&conn, args.Holder());
   Environment* env = conn->env();
 
   if (args.Length() < 3) {
@@ -2965,21 +3005,24 @@ void Connection::ClearOut(const FunctionCallbackInfo<Value>& args) {
 
 
 void Connection::ClearPending(const FunctionCallbackInfo<Value>& args) {
-  Connection* conn = Unwrap<Connection>(args.Holder());
+  Connection* conn;
+  ASSIGN_OR_RETURN_UNWRAP(&conn, args.Holder());
   int bytes_pending = BIO_pending(conn->bio_read_);
   args.GetReturnValue().Set(bytes_pending);
 }
 
 
 void Connection::EncPending(const FunctionCallbackInfo<Value>& args) {
-  Connection* conn = Unwrap<Connection>(args.Holder());
+  Connection* conn;
+  ASSIGN_OR_RETURN_UNWRAP(&conn, args.Holder());
   int bytes_pending = BIO_pending(conn->bio_write_);
   args.GetReturnValue().Set(bytes_pending);
 }
 
 
 void Connection::EncOut(const FunctionCallbackInfo<Value>& args) {
-  Connection* conn = Unwrap<Connection>(args.Holder());
+  Connection* conn;
+  ASSIGN_OR_RETURN_UNWRAP(&conn, args.Holder());
   Environment* env = conn->env();
 
   if (args.Length() < 3) {
@@ -3008,7 +3051,8 @@ void Connection::EncOut(const FunctionCallbackInfo<Value>& args) {
 
 
 void Connection::ClearIn(const FunctionCallbackInfo<Value>& args) {
-  Connection* conn = Unwrap<Connection>(args.Holder());
+  Connection* conn;
+  ASSIGN_OR_RETURN_UNWRAP(&conn, args.Holder());
   Environment* env = conn->env();
 
   if (args.Length() < 3) {
@@ -3061,7 +3105,8 @@ void Connection::ClearIn(const FunctionCallbackInfo<Value>& args) {
 
 
 void Connection::Start(const FunctionCallbackInfo<Value>& args) {
-  Connection* conn = Unwrap<Connection>(args.Holder());
+  Connection* conn;
+  ASSIGN_OR_RETURN_UNWRAP(&conn, args.Holder());
 
   int rv = 0;
   if (!SSL_is_init_finished(conn->ssl_)) {
@@ -3084,7 +3129,8 @@ void Connection::Start(const FunctionCallbackInfo<Value>& args) {
 
 
 void Connection::Close(const FunctionCallbackInfo<Value>& args) {
-  Connection* conn = Unwrap<Connection>(args.Holder());
+  Connection* conn;
+  ASSIGN_OR_RETURN_UNWRAP(&conn, args.Holder());
 
   if (conn->ssl_ != nullptr) {
     SSL_free(conn->ssl_);
@@ -3095,7 +3141,8 @@ void Connection::Close(const FunctionCallbackInfo<Value>& args) {
 
 #ifdef SSL_CTRL_SET_TLSEXT_SERVERNAME_CB
 void Connection::GetServername(const FunctionCallbackInfo<Value>& args) {
-  Connection* conn = Unwrap<Connection>(args.Holder());
+  Connection* conn;
+  ASSIGN_OR_RETURN_UNWRAP(&conn, args.Holder());
 
   if (conn->is_server() && !conn->servername_.IsEmpty()) {
     args.GetReturnValue().Set(conn->servername_);
@@ -3106,7 +3153,8 @@ void Connection::GetServername(const FunctionCallbackInfo<Value>& args) {
 
 
 void Connection::SetSNICallback(const FunctionCallbackInfo<Value>& args) {
-  Connection* conn = Unwrap<Connection>(args.Holder());
+  Connection* conn;
+  ASSIGN_OR_RETURN_UNWRAP(&conn, args.Holder());
   Environment* env = conn->env();
 
   if (args.Length() < 1 || !args[0]->IsFunction()) {
@@ -3196,7 +3244,8 @@ void CipherBase::Init(const char* cipher_type,
 
 
 void CipherBase::Init(const FunctionCallbackInfo<Value>& args) {
-  CipherBase* cipher = Unwrap<CipherBase>(args.Holder());
+  CipherBase* cipher;
+  ASSIGN_OR_RETURN_UNWRAP(&cipher, args.Holder());
   Environment* env = cipher->env();
 
   if (args.Length() < 2) {
@@ -3250,7 +3299,8 @@ void CipherBase::InitIv(const char* cipher_type,
 
 
 void CipherBase::InitIv(const FunctionCallbackInfo<Value>& args) {
-  CipherBase* cipher = Unwrap<CipherBase>(args.Holder());
+  CipherBase* cipher;
+  ASSIGN_OR_RETURN_UNWRAP(&cipher, args.Holder());
   Environment* env = cipher->env();
 
   if (args.Length() < 3) {
@@ -3293,7 +3343,8 @@ bool CipherBase::GetAuthTag(char** out, unsigned int* out_len) const {
 
 void CipherBase::GetAuthTag(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
-  CipherBase* cipher = Unwrap<CipherBase>(args.Holder());
+  CipherBase* cipher;
+  ASSIGN_OR_RETURN_UNWRAP(&cipher, args.Holder());
 
   char* out = nullptr;
   unsigned int out_len = 0;
@@ -3326,7 +3377,8 @@ void CipherBase::SetAuthTag(const FunctionCallbackInfo<Value>& args) {
   if (!buf->IsObject() || !Buffer::HasInstance(buf))
     return env->ThrowTypeError("Auth tag must be a Buffer");
 
-  CipherBase* cipher = Unwrap<CipherBase>(args.Holder());
+  CipherBase* cipher;
+  ASSIGN_OR_RETURN_UNWRAP(&cipher, args.Holder());
 
   if (!cipher->SetAuthTag(Buffer::Data(buf), Buffer::Length(buf)))
     env->ThrowError("Attempting to set auth tag in unsupported state");
@@ -3353,7 +3405,8 @@ void CipherBase::SetAAD(const FunctionCallbackInfo<Value>& args) {
 
   THROW_AND_RETURN_IF_NOT_BUFFER(args[0], "AAD");
 
-  CipherBase* cipher = Unwrap<CipherBase>(args.Holder());
+  CipherBase* cipher;
+  ASSIGN_OR_RETURN_UNWRAP(&cipher, args.Holder());
 
   if (!cipher->SetAAD(Buffer::Data(args[0]), Buffer::Length(args[0])))
     env->ThrowError("Attempting to set AAD in unsupported state");
@@ -3390,7 +3443,8 @@ bool CipherBase::Update(const char* data,
 void CipherBase::Update(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
 
-  CipherBase* cipher = Unwrap<CipherBase>(args.Holder());
+  CipherBase* cipher;
+  ASSIGN_OR_RETURN_UNWRAP(&cipher, args.Holder());
 
   THROW_AND_RETURN_IF_NOT_STRING_OR_BUFFER(args[0], "Cipher data");
 
@@ -3435,7 +3489,8 @@ bool CipherBase::SetAutoPadding(bool auto_padding) {
 
 
 void CipherBase::SetAutoPadding(const FunctionCallbackInfo<Value>& args) {
-  CipherBase* cipher = Unwrap<CipherBase>(args.Holder());
+  CipherBase* cipher;
+  ASSIGN_OR_RETURN_UNWRAP(&cipher, args.Holder());
   cipher->SetAutoPadding(args.Length() < 1 || args[0]->BooleanValue());
 }
 
@@ -3471,7 +3526,8 @@ bool CipherBase::Final(unsigned char** out, int *out_len) {
 void CipherBase::Final(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
 
-  CipherBase* cipher = Unwrap<CipherBase>(args.Holder());
+  CipherBase* cipher;
+  ASSIGN_OR_RETURN_UNWRAP(&cipher, args.Holder());
 
   unsigned char* out_value = nullptr;
   int out_len = -1;
@@ -3545,7 +3601,8 @@ void Hmac::HmacInit(const char* hash_type, const char* key, int key_len) {
 
 
 void Hmac::HmacInit(const FunctionCallbackInfo<Value>& args) {
-  Hmac* hmac = Unwrap<Hmac>(args.Holder());
+  Hmac* hmac;
+  ASSIGN_OR_RETURN_UNWRAP(&hmac, args.Holder());
   Environment* env = hmac->env();
 
   if (args.Length() < 2) {
@@ -3573,7 +3630,8 @@ bool Hmac::HmacUpdate(const char* data, int len) {
 void Hmac::HmacUpdate(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
 
-  Hmac* hmac = Unwrap<Hmac>(args.Holder());
+  Hmac* hmac;
+  ASSIGN_OR_RETURN_UNWRAP(&hmac, args.Holder());
 
   THROW_AND_RETURN_IF_NOT_STRING_OR_BUFFER(args[0], "Data");
 
@@ -3610,7 +3668,8 @@ bool Hmac::HmacDigest(unsigned char** md_value, unsigned int* md_len) {
 void Hmac::HmacDigest(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
 
-  Hmac* hmac = Unwrap<Hmac>(args.Holder());
+  Hmac* hmac;
+  ASSIGN_OR_RETURN_UNWRAP(&hmac, args.Holder());
 
   enum encoding encoding = BUFFER;
   if (args.Length() >= 1) {
@@ -3676,6 +3735,7 @@ bool Hash::HashInit(const char* hash_type) {
     return false;
   }
   initialised_ = true;
+  finalized_ = false;
   return true;
 }
 
@@ -3691,9 +3751,17 @@ bool Hash::HashUpdate(const char* data, int len) {
 void Hash::HashUpdate(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
 
-  Hash* hash = Unwrap<Hash>(args.Holder());
+  Hash* hash;
+  ASSIGN_OR_RETURN_UNWRAP(&hash, args.Holder());
 
   THROW_AND_RETURN_IF_NOT_STRING_OR_BUFFER(args[0], "Data");
+
+  if (!hash->initialised_) {
+    return env->ThrowError("Not initialized");
+  }
+  if (hash->finalized_) {
+    return env->ThrowError("Digest already called");
+  }
 
   // Only copy the data if we have to, because it's a string
   bool r;
@@ -3717,10 +3785,14 @@ void Hash::HashUpdate(const FunctionCallbackInfo<Value>& args) {
 void Hash::HashDigest(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
 
-  Hash* hash = Unwrap<Hash>(args.Holder());
+  Hash* hash;
+  ASSIGN_OR_RETURN_UNWRAP(&hash, args.Holder());
 
   if (!hash->initialised_) {
     return env->ThrowError("Not initialized");
+  }
+  if (hash->finalized_) {
+    return env->ThrowError("Digest already called");
   }
 
   enum encoding encoding = BUFFER;
@@ -3735,7 +3807,7 @@ void Hash::HashDigest(const FunctionCallbackInfo<Value>& args) {
 
   EVP_DigestFinal_ex(&hash->mdctx_, md_value, &md_len);
   EVP_MD_CTX_cleanup(&hash->mdctx_);
-  hash->initialised_ = false;
+  hash->finalized_ = true;
 
   Local<Value> rc = StringBytes::Encode(env->isolate(),
                                         reinterpret_cast<const char*>(md_value),
@@ -3820,7 +3892,8 @@ SignBase::Error Sign::SignInit(const char* sign_type) {
 
 
 void Sign::SignInit(const FunctionCallbackInfo<Value>& args) {
-  Sign* sign = Unwrap<Sign>(args.Holder());
+  Sign* sign;
+  ASSIGN_OR_RETURN_UNWRAP(&sign, args.Holder());
   Environment* env = sign->env();
 
   if (args.Length() == 0) {
@@ -3846,7 +3919,8 @@ SignBase::Error Sign::SignUpdate(const char* data, int len) {
 void Sign::SignUpdate(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
 
-  Sign* sign = Unwrap<Sign>(args.Holder());
+  Sign* sign;
+  ASSIGN_OR_RETURN_UNWRAP(&sign, args.Holder());
 
   THROW_AND_RETURN_IF_NOT_STRING_OR_BUFFER(args[0], "Data");
 
@@ -3940,7 +4014,8 @@ SignBase::Error Sign::SignFinal(const char* key_pem,
 void Sign::SignFinal(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
 
-  Sign* sign = Unwrap<Sign>(args.Holder());
+  Sign* sign;
+  ASSIGN_OR_RETURN_UNWRAP(&sign, args.Holder());
 
   unsigned char* md_value;
   unsigned int md_len;
@@ -4023,7 +4098,8 @@ SignBase::Error Verify::VerifyInit(const char* verify_type) {
 
 
 void Verify::VerifyInit(const FunctionCallbackInfo<Value>& args) {
-  Verify* verify = Unwrap<Verify>(args.Holder());
+  Verify* verify;
+  ASSIGN_OR_RETURN_UNWRAP(&verify, args.Holder());
   Environment* env = verify->env();
 
   if (args.Length() == 0) {
@@ -4051,7 +4127,8 @@ SignBase::Error Verify::VerifyUpdate(const char* data, int len) {
 void Verify::VerifyUpdate(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
 
-  Verify* verify = Unwrap<Verify>(args.Holder());
+  Verify* verify;
+  ASSIGN_OR_RETURN_UNWRAP(&verify, args.Holder());
 
   THROW_AND_RETURN_IF_NOT_STRING_OR_BUFFER(args[0], "Data");
 
@@ -4150,7 +4227,8 @@ SignBase::Error Verify::VerifyFinal(const char* key_pem,
 void Verify::VerifyFinal(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
 
-  Verify* verify = Unwrap<Verify>(args.Holder());
+  Verify* verify;
+  ASSIGN_OR_RETURN_UNWRAP(&verify, args.Holder());
 
   THROW_AND_RETURN_IF_NOT_BUFFER(args[0], "Key");
   char* kbuf = Buffer::Data(args[0]);
@@ -4441,7 +4519,7 @@ void DiffieHellman::DiffieHellmanGroup(
   for (size_t i = 0; i < arraysize(modp_groups); ++i) {
     const modp_group* it = modp_groups + i;
 
-    if (strcasecmp(*group_name, it->name) != 0)
+    if (!StringEqualNoCase(*group_name, it->name))
       continue;
 
     initialized = diffieHellman->Init(it->prime,
@@ -4492,7 +4570,8 @@ void DiffieHellman::New(const FunctionCallbackInfo<Value>& args) {
 void DiffieHellman::GenerateKeys(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
 
-  DiffieHellman* diffieHellman = Unwrap<DiffieHellman>(args.Holder());
+  DiffieHellman* diffieHellman;
+  ASSIGN_OR_RETURN_UNWRAP(&diffieHellman, args.Holder());
 
   if (!diffieHellman->initialised_) {
     return ThrowCryptoError(env, ERR_get_error(), "Not initialized");
@@ -4515,7 +4594,8 @@ void DiffieHellman::GenerateKeys(const FunctionCallbackInfo<Value>& args) {
 void DiffieHellman::GetPrime(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
 
-  DiffieHellman* diffieHellman = Unwrap<DiffieHellman>(args.Holder());
+  DiffieHellman* diffieHellman;
+  ASSIGN_OR_RETURN_UNWRAP(&diffieHellman, args.Holder());
 
   if (!diffieHellman->initialised_) {
     return ThrowCryptoError(env, ERR_get_error(), "Not initialized");
@@ -4533,7 +4613,8 @@ void DiffieHellman::GetPrime(const FunctionCallbackInfo<Value>& args) {
 void DiffieHellman::GetGenerator(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
 
-  DiffieHellman* diffieHellman = Unwrap<DiffieHellman>(args.Holder());
+  DiffieHellman* diffieHellman;
+  ASSIGN_OR_RETURN_UNWRAP(&diffieHellman, args.Holder());
 
   if (!diffieHellman->initialised_) {
     return ThrowCryptoError(env, ERR_get_error(), "Not initialized");
@@ -4551,7 +4632,8 @@ void DiffieHellman::GetGenerator(const FunctionCallbackInfo<Value>& args) {
 void DiffieHellman::GetPublicKey(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
 
-  DiffieHellman* diffieHellman = Unwrap<DiffieHellman>(args.Holder());
+  DiffieHellman* diffieHellman;
+  ASSIGN_OR_RETURN_UNWRAP(&diffieHellman, args.Holder());
 
   if (!diffieHellman->initialised_) {
     return ThrowCryptoError(env, ERR_get_error(), "Not initialized");
@@ -4574,7 +4656,8 @@ void DiffieHellman::GetPublicKey(const FunctionCallbackInfo<Value>& args) {
 void DiffieHellman::GetPrivateKey(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
 
-  DiffieHellman* diffieHellman = Unwrap<DiffieHellman>(args.Holder());
+  DiffieHellman* diffieHellman;
+  ASSIGN_OR_RETURN_UNWRAP(&diffieHellman, args.Holder());
 
   if (!diffieHellman->initialised_) {
     return ThrowCryptoError(env, ERR_get_error(), "Not initialized");
@@ -4597,7 +4680,8 @@ void DiffieHellman::GetPrivateKey(const FunctionCallbackInfo<Value>& args) {
 void DiffieHellman::ComputeSecret(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
 
-  DiffieHellman* diffieHellman = Unwrap<DiffieHellman>(args.Holder());
+  DiffieHellman* diffieHellman;
+  ASSIGN_OR_RETURN_UNWRAP(&diffieHellman, args.Holder());
 
   if (!diffieHellman->initialised_) {
     return ThrowCryptoError(env, ERR_get_error(), "Not initialized");
@@ -4666,7 +4750,8 @@ void DiffieHellman::ComputeSecret(const FunctionCallbackInfo<Value>& args) {
 
 
 void DiffieHellman::SetPublicKey(const FunctionCallbackInfo<Value>& args) {
-  DiffieHellman* diffieHellman = Unwrap<DiffieHellman>(args.Holder());
+  DiffieHellman* diffieHellman;
+  ASSIGN_OR_RETURN_UNWRAP(&diffieHellman, args.Holder());
   Environment* env = diffieHellman->env();
 
   if (!diffieHellman->initialised_) {
@@ -4685,7 +4770,8 @@ void DiffieHellman::SetPublicKey(const FunctionCallbackInfo<Value>& args) {
 
 
 void DiffieHellman::SetPrivateKey(const FunctionCallbackInfo<Value>& args) {
-  DiffieHellman* diffieHellman = Unwrap<DiffieHellman>(args.Holder());
+  DiffieHellman* diffieHellman;
+  ASSIGN_OR_RETURN_UNWRAP(&diffieHellman, args.Holder());
   Environment* env = diffieHellman->env();
 
   if (!diffieHellman->initialised_) {
@@ -4708,7 +4794,8 @@ void DiffieHellman::VerifyErrorGetter(Local<String> property,
                                       const PropertyCallbackInfo<Value>& args) {
   HandleScope scope(args.GetIsolate());
 
-  DiffieHellman* diffieHellman = Unwrap<DiffieHellman>(args.Holder());
+  DiffieHellman* diffieHellman;
+  ASSIGN_OR_RETURN_UNWRAP(&diffieHellman, args.Holder());
 
   if (!diffieHellman->initialised_)
     return ThrowCryptoError(diffieHellman->env(), ERR_get_error(),
@@ -4770,7 +4857,8 @@ void ECDH::New(const FunctionCallbackInfo<Value>& args) {
 void ECDH::GenerateKeys(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
 
-  ECDH* ecdh = Unwrap<ECDH>(args.Holder());
+  ECDH* ecdh;
+  ASSIGN_OR_RETURN_UNWRAP(&ecdh, args.Holder());
 
   if (!EC_KEY_generate_key(ecdh->key_))
     return env->ThrowError("Failed to generate EC_KEY");
@@ -4811,7 +4899,8 @@ void ECDH::ComputeSecret(const FunctionCallbackInfo<Value>& args) {
 
   THROW_AND_RETURN_IF_NOT_BUFFER(args[0], "Data");
 
-  ECDH* ecdh = Unwrap<ECDH>(args.Holder());
+  ECDH* ecdh;
+  ASSIGN_OR_RETURN_UNWRAP(&ecdh, args.Holder());
 
   if (!ecdh->IsKeyPairValid())
     return env->ThrowError("Invalid key pair");
@@ -4845,7 +4934,8 @@ void ECDH::GetPublicKey(const FunctionCallbackInfo<Value>& args) {
   // Conversion form
   CHECK_EQ(args.Length(), 1);
 
-  ECDH* ecdh = Unwrap<ECDH>(args.Holder());
+  ECDH* ecdh;
+  ASSIGN_OR_RETURN_UNWRAP(&ecdh, args.Holder());
 
   const EC_POINT* pub = EC_KEY_get0_public_key(ecdh->key_);
   if (pub == nullptr)
@@ -4877,7 +4967,8 @@ void ECDH::GetPublicKey(const FunctionCallbackInfo<Value>& args) {
 void ECDH::GetPrivateKey(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
 
-  ECDH* ecdh = Unwrap<ECDH>(args.Holder());
+  ECDH* ecdh;
+  ASSIGN_OR_RETURN_UNWRAP(&ecdh, args.Holder());
 
   const BIGNUM* b = EC_KEY_get0_private_key(ecdh->key_);
   if (b == nullptr)
@@ -4901,7 +4992,8 @@ void ECDH::GetPrivateKey(const FunctionCallbackInfo<Value>& args) {
 void ECDH::SetPrivateKey(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
 
-  ECDH* ecdh = Unwrap<ECDH>(args.Holder());
+  ECDH* ecdh;
+  ASSIGN_OR_RETURN_UNWRAP(&ecdh, args.Holder());
 
   THROW_AND_RETURN_IF_NOT_BUFFER(args[0], "Private key");
 
@@ -4954,7 +5046,8 @@ void ECDH::SetPrivateKey(const FunctionCallbackInfo<Value>& args) {
 void ECDH::SetPublicKey(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
 
-  ECDH* ecdh = Unwrap<ECDH>(args.Holder());
+  ECDH* ecdh;
+  ASSIGN_OR_RETURN_UNWRAP(&ecdh, args.Holder());
 
   THROW_AND_RETURN_IF_NOT_BUFFER(args[0], "Public key");
 
@@ -5022,6 +5115,7 @@ class PBKDF2Request : public AsyncWrap {
 
   ~PBKDF2Request() override {
     release();
+    ClearWrap(object());
     persistent().Reset();
   }
 
@@ -5287,6 +5381,7 @@ class RandomBytesRequest : public AsyncWrap {
   }
 
   ~RandomBytesRequest() override {
+    ClearWrap(object());
     persistent().Reset();
   }
 
@@ -5685,10 +5780,10 @@ void ExportChallenge(const FunctionCallbackInfo<Value>& args) {
 
 
 void InitCryptoOnce() {
+  OPENSSL_config(NULL);
   SSL_library_init();
   OpenSSL_add_all_algorithms();
   SSL_load_error_strings();
-  OPENSSL_config(NULL);
 
   crypto_lock_init();
   CRYPTO_set_locking_callback(crypto_lock_cb);
@@ -5710,15 +5805,8 @@ void InitCryptoOnce() {
 
 
   // Turn off compression. Saves memory and protects against CRIME attacks.
-#if !defined(OPENSSL_NO_COMP)
-#if OPENSSL_VERSION_NUMBER < 0x00908000L
-  STACK_OF(SSL_COMP)* comp_methods = SSL_COMP_get_compression_method();
-#else
-  STACK_OF(SSL_COMP)* comp_methods = SSL_COMP_get_compression_methods();
-#endif
-  sk_SSL_COMP_zero(comp_methods);
-  CHECK_EQ(sk_SSL_COMP_num(comp_methods), 0);
-#endif
+  // No-op with OPENSSL_NO_COMP builds of OpenSSL.
+  sk_SSL_COMP_zero(SSL_COMP_get_compression_methods());
 
 #ifndef OPENSSL_NO_ENGINE
   ERR_load_ENGINE_strings();

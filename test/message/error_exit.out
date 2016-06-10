@@ -8,7 +8,9 @@ AssertionError: 1 == 2
     at Module._compile (module.js:*:*)
     at Object.Module._extensions..js (module.js:*:*)
     at Module.load (module.js:*:*)
+    at tryModuleLoad (module.js:*:*)
     at Function.Module._load (module.js:*:*)
-    at Function.Module.runMain (module.js:*:*)
+    at Module.runMain (module.js:*:*)
+    at run (node.js:*:*)
     at startup (node.js:*:*)
     at node.js:*:*

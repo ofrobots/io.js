@@ -17,6 +17,8 @@ exports.libDir = path.join(exports.testDir, '../lib');
 exports.tmpDirName = 'tmp';
 exports.PORT = +process.env.NODE_COMMON_PORT || 12346;
 exports.isWindows = process.platform === 'win32';
+exports.isWOW64 = exports.isWindows &&
+                  (process.env['PROCESSOR_ARCHITEW6432'] !== undefined);
 exports.isAix = process.platform === 'aix';
 exports.isLinuxPPCBE = (process.platform === 'linux') &&
                        (process.arch === 'ppc64') &&
@@ -160,7 +162,7 @@ Object.defineProperty(exports, 'opensslCli', {get: function() {
     opensslCli = false;
   }
   return opensslCli;
-}, enumerable: true });
+}, enumerable: true});
 
 Object.defineProperty(exports, 'hasCrypto', {
   get: function() {
@@ -241,9 +243,23 @@ exports.spawnPwd = function(options) {
   }
 };
 
+
+exports.spawnSyncPwd = function(options) {
+  const spawnSync = require('child_process').spawnSync;
+
+  if (exports.isWindows) {
+    return spawnSync('cmd.exe', ['/c', 'cd'], options);
+  } else {
+    return spawnSync('pwd', [], options);
+  }
+};
+
 exports.platformTimeout = function(ms) {
   if (process.config.target_defaults.default_configuration === 'Debug')
     ms = 2 * ms;
+
+  if (exports.isAix)
+    return 2 * ms; // default localhost speed is slower on AIX
 
   if (process.arch !== 'arm')
     return ms;
@@ -272,7 +288,7 @@ var knownGlobals = [setTimeout,
                     global];
 
 if (global.gc) {
-  knownGlobals.push(gc);
+  knownGlobals.push(global.gc);
 }
 
 if (global.DTRACE_HTTP_SERVER_RESPONSE) {
@@ -392,55 +408,6 @@ exports.mustCall = function(fn, expected) {
   };
 };
 
-var etcServicesFileName = path.join('/etc', 'services');
-if (exports.isWindows) {
-  etcServicesFileName = path.join(process.env.SystemRoot, 'System32', 'drivers',
-    'etc', 'services');
-}
-
-/*
- * Returns a string that represents the service name associated
- * to the service bound to port "port" and using protocol "protocol".
- *
- * If the service is not defined in the services file, it returns
- * the port number as a string.
- *
- * Returns undefined if /etc/services (or its equivalent on non-UNIX
- * platforms) can't be read.
- */
-exports.getServiceName = function getServiceName(port, protocol) {
-  if (port == null) {
-    throw new Error('Missing port number');
-  }
-
-  if (typeof protocol !== 'string') {
-    throw new Error('Protocol must be a string');
-  }
-
-  /*
-   * By default, if a service can't be found in /etc/services,
-   * its name is considered to be its port number.
-   */
-  var serviceName = port.toString();
-
-  try {
-    var servicesContent = fs.readFileSync(etcServicesFileName,
-      { encoding: 'utf8'});
-    var regexp = `^(\\w+)\\s+\\s${port}/${protocol}\\s`;
-    var re = new RegExp(regexp, 'm');
-
-    var matches = re.exec(servicesContent);
-    if (matches && matches.length > 1) {
-      serviceName = matches[1];
-    }
-  } catch (e) {
-    console.error('Cannot read file: ', etcServicesFileName);
-    return undefined;
-  }
-
-  return serviceName;
-};
-
 exports.hasMultiLocalhost = function hasMultiLocalhost() {
   var TCP = process.binding('tcp_wrap').TCP;
   var t = new TCP();
@@ -462,6 +429,9 @@ exports.fail = function(msg) {
   assert.fail(null, null, msg);
 };
 
+exports.skip = function(msg) {
+  console.log(`1..0 # Skipped: ${msg}`);
+};
 
 // A stream to push an array into a REPL
 function ArrayStream() {

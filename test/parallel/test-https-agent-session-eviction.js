@@ -3,19 +3,19 @@
 const common = require('../common');
 
 if (!common.hasCrypto) {
-  console.log('1..0 # Skipped: missing crypto');
+  common.skip('missing crypto');
   return;
 }
 
 const assert = require('assert');
 const https = require('https');
 const fs = require('fs');
-const constants = require('constants');
+const SSL_OP_NO_TICKET = require('crypto').constants.SSL_OP_NO_TICKET;
 
 const options = {
   key: fs.readFileSync(common.fixturesDir + '/keys/agent1-key.pem'),
   cert: fs.readFileSync(common.fixturesDir + '/keys/agent1-cert.pem'),
-  secureOptions: constants.SSL_OP_NO_TICKET
+  secureOptions: SSL_OP_NO_TICKET
 };
 
 // Create TLS1.2 server
@@ -26,7 +26,7 @@ https.createServer(options, function(req, res) {
 });
 
 // Do request and let agent cache the session
-function first(server)  {
+function first(server) {
   const req = https.request({
     port: common.PORT,
     rejectUnauthorized: false

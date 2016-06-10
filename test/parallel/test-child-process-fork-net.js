@@ -1,8 +1,8 @@
 'use strict';
-var assert = require('assert');
-var common = require('../common');
-var fork = require('child_process').fork;
-var net = require('net');
+const assert = require('assert');
+require('../common');
+const fork = require('child_process').fork;
+const net = require('net');
 
 // progress tracker
 function ProgressTracker(missing, callback) {
@@ -76,9 +76,9 @@ if (process.argv[2] === 'child') {
       server.close();
     });
 
-    // we expect 10 connections and close events
-    var connections = new ProgressTracker(10, progress.done.bind(progress));
-    var closed = new ProgressTracker(10, progress.done.bind(progress));
+    // we expect 4 connections and close events
+    var connections = new ProgressTracker(4, progress.done.bind(progress));
+    var closed = new ProgressTracker(4, progress.done.bind(progress));
 
     // create server and send it to child
     var server = net.createServer();
@@ -91,7 +91,7 @@ if (process.argv[2] === 'child') {
       console.log('PARENT: server listening');
       child.send({what: 'server'}, server);
     });
-    server.listen(common.PORT);
+    server.listen(0);
 
     // handle client messages
     var messageHandlers = function(msg) {
@@ -99,8 +99,8 @@ if (process.argv[2] === 'child') {
       if (msg.what === 'listening') {
         // make connections
         var socket;
-        for (var i = 0; i < 10; i++) {
-          socket = net.connect(common.PORT, function() {
+        for (var i = 0; i < 4; i++) {
+          socket = net.connect(server.address().port, function() {
             console.log('CLIENT: connected');
           });
           socket.on('close', function() {
@@ -143,9 +143,9 @@ if (process.argv[2] === 'child') {
     //
     // An isolated test for this would be lovely, but for now, this
     // will have to do.
-    server.listen(common.PORT + 1, function() {
+    server.listen(0, function() {
       console.error('testSocket, listening');
-      var connect = net.connect(common.PORT + 1);
+      var connect = net.connect(server.address().port);
       var store = '';
       connect.on('data', function(chunk) {
         store += chunk;

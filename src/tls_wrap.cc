@@ -15,8 +15,8 @@
 
 namespace node {
 
-using crypto::SSLWrap;
 using crypto::SecureContext;
+using crypto::SSLWrap;
 using v8::Boolean;
 using v8::Context;
 using v8::EscapableHandleScope;
@@ -24,9 +24,7 @@ using v8::Exception;
 using v8::Function;
 using v8::FunctionCallbackInfo;
 using v8::FunctionTemplate;
-using v8::Integer;
 using v8::Local;
-using v8::Null;
 using v8::Object;
 using v8::String;
 using v8::Value;
@@ -55,6 +53,9 @@ TLSWrap::TLSWrap(Environment* env,
       eof_(false) {
   node::Wrap(object(), this);
   MakeWeak(this);
+
+  // sc comes from an Unwrap. Make sure it was assigned.
+  CHECK_NE(sc, nullptr);
 
   // We've our own session callbacks
   SSL_CTX_sess_set_get_cb(sc_->ctx_, SSLWrap<TLSWrap>::GetSessionCallback);
@@ -190,7 +191,8 @@ void TLSWrap::Wrap(const FunctionCallbackInfo<Value>& args) {
 
 
 void TLSWrap::Receive(const FunctionCallbackInfo<Value>& args) {
-  TLSWrap* wrap = Unwrap<TLSWrap>(args.Holder());
+  TLSWrap* wrap;
+  ASSIGN_OR_RETURN_UNWRAP(&wrap, args.Holder());
 
   CHECK(Buffer::HasInstance(args[0]));
   char* data = Buffer::Data(args[0]);
@@ -215,7 +217,8 @@ void TLSWrap::Receive(const FunctionCallbackInfo<Value>& args) {
 void TLSWrap::Start(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
 
-  TLSWrap* wrap = Unwrap<TLSWrap>(args.Holder());
+  TLSWrap* wrap;
+  ASSIGN_OR_RETURN_UNWRAP(&wrap, args.Holder());
 
   if (wrap->started_)
     return env->ThrowError("Already started.");
@@ -733,7 +736,8 @@ int TLSWrap::DoShutdown(ShutdownWrap* req_wrap) {
 void TLSWrap::SetVerifyMode(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
 
-  TLSWrap* wrap = Unwrap<TLSWrap>(args.Holder());
+  TLSWrap* wrap;
+  ASSIGN_OR_RETURN_UNWRAP(&wrap, args.Holder());
 
   if (args.Length() < 2 || !args[0]->IsBoolean() || !args[1]->IsBoolean())
     return env->ThrowTypeError("Bad arguments, expected two booleans");
@@ -765,7 +769,8 @@ void TLSWrap::SetVerifyMode(const FunctionCallbackInfo<Value>& args) {
 
 void TLSWrap::EnableSessionCallbacks(
     const FunctionCallbackInfo<Value>& args) {
-  TLSWrap* wrap = Unwrap<TLSWrap>(args.Holder());
+  TLSWrap* wrap;
+  ASSIGN_OR_RETURN_UNWRAP(&wrap, args.Holder());
   if (wrap->ssl_ == nullptr) {
     return wrap->env()->ThrowTypeError(
         "EnableSessionCallbacks after destroySSL");
@@ -779,7 +784,8 @@ void TLSWrap::EnableSessionCallbacks(
 
 
 void TLSWrap::DestroySSL(const FunctionCallbackInfo<Value>& args) {
-  TLSWrap* wrap = Unwrap<TLSWrap>(args.Holder());
+  TLSWrap* wrap;
+  ASSIGN_OR_RETURN_UNWRAP(&wrap, args.Holder());
 
   // Move all writes to pending
   wrap->MakePending();
@@ -796,7 +802,8 @@ void TLSWrap::DestroySSL(const FunctionCallbackInfo<Value>& args) {
 
 
 void TLSWrap::EnableCertCb(const FunctionCallbackInfo<Value>& args) {
-  TLSWrap* wrap = Unwrap<TLSWrap>(args.Holder());
+  TLSWrap* wrap;
+  ASSIGN_OR_RETURN_UNWRAP(&wrap, args.Holder());
   wrap->WaitForCertCb(OnClientHelloParseEnd, wrap);
 }
 
@@ -811,7 +818,8 @@ void TLSWrap::OnClientHelloParseEnd(void* arg) {
 void TLSWrap::GetServername(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
 
-  TLSWrap* wrap = Unwrap<TLSWrap>(args.Holder());
+  TLSWrap* wrap;
+  ASSIGN_OR_RETURN_UNWRAP(&wrap, args.Holder());
 
   CHECK_NE(wrap->ssl_, nullptr);
 
@@ -828,7 +836,8 @@ void TLSWrap::GetServername(const FunctionCallbackInfo<Value>& args) {
 void TLSWrap::SetServername(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
 
-  TLSWrap* wrap = Unwrap<TLSWrap>(args.Holder());
+  TLSWrap* wrap;
+  ASSIGN_OR_RETURN_UNWRAP(&wrap, args.Holder());
 
   if (args.Length() < 1 || !args[0]->IsString())
     return env->ThrowTypeError("First argument should be a string");
@@ -877,6 +886,7 @@ int TLSWrap::SelectSNIContextCallback(SSL* s, int* ad, void* arg) {
   p->sni_context_.Reset(env->isolate(), ctx);
 
   SecureContext* sc = Unwrap<SecureContext>(ctx.As<Object>());
+  CHECK_NE(sc, nullptr);
   p->SetSNIContext(sc);
   return SSL_TLSEXT_ERR_OK;
 }
@@ -890,7 +900,10 @@ void TLSWrap::Initialize(Local<Object> target,
 
   env->SetMethod(target, "wrap", TLSWrap::Wrap);
 
-  Local<FunctionTemplate> t = FunctionTemplate::New(env->isolate());
+  auto constructor = [](const FunctionCallbackInfo<Value>& args) {
+    args.This()->SetAlignedPointerInInternalField(0, nullptr);
+  };
+  auto t = env->NewFunctionTemplate(constructor);
   t->InstanceTemplate()->SetInternalFieldCount(1);
   t->SetClassName(FIXED_ONE_BYTE_STRING(env->isolate(), "TLSWrap"));
 

@@ -40,6 +40,7 @@ class ProcessWrap : public HandleWrap {
 
     env->SetProtoMethod(constructor, "ref", HandleWrap::Ref);
     env->SetProtoMethod(constructor, "unref", HandleWrap::Unref);
+    env->SetProtoMethod(constructor, "hasRef", HandleWrap::HasRef);
 
     target->Set(FIXED_ONE_BYTE_STRING(env->isolate(), "Process"),
                 constructor->GetFunction());
@@ -85,6 +86,7 @@ class ProcessWrap : public HandleWrap {
             UV_CREATE_PIPE | UV_READABLE_PIPE | UV_WRITABLE_PIPE);
         Local<String> handle_key = env->handle_string();
         Local<Object> handle = stdio->Get(handle_key).As<Object>();
+        CHECK(!handle.IsEmpty());
         options->stdio[i].data.stream =
             reinterpret_cast<uv_stream_t*>(
                 Unwrap<PipeWrap>(handle)->UVHandle());
@@ -108,7 +110,8 @@ class ProcessWrap : public HandleWrap {
   static void Spawn(const FunctionCallbackInfo<Value>& args) {
     Environment* env = Environment::GetCurrent(args);
 
-    ProcessWrap* wrap = Unwrap<ProcessWrap>(args.Holder());
+    ProcessWrap* wrap;
+    ASSIGN_OR_RETURN_UNWRAP(&wrap, args.Holder());
 
     Local<Object> js_options = args[0]->ToObject(env->isolate());
 
@@ -165,6 +168,7 @@ class ProcessWrap : public HandleWrap {
       for (int i = 0; i < argc; i++) {
         node::Utf8Value arg(env->isolate(), js_argv->Get(i));
         options.args[i] = strdup(*arg);
+        CHECK_NE(options.args[i], nullptr);
       }
       options.args[argc] = nullptr;
     }
@@ -186,6 +190,7 @@ class ProcessWrap : public HandleWrap {
       for (int i = 0; i < envc; i++) {
         node::Utf8Value pair(env->isolate(), env_opt->Get(i));
         options.env[i] = strdup(*pair);
+        CHECK_NE(options.env[i], nullptr);
       }
       options.env[envc] = nullptr;
     }
@@ -230,7 +235,8 @@ class ProcessWrap : public HandleWrap {
   }
 
   static void Kill(const FunctionCallbackInfo<Value>& args) {
-    ProcessWrap* wrap = Unwrap<ProcessWrap>(args.Holder());
+    ProcessWrap* wrap;
+    ASSIGN_OR_RETURN_UNWRAP(&wrap, args.Holder());
     int signal = args[0]->Int32Value();
     int err = uv_process_kill(&wrap->process_, signal);
     args.GetReturnValue().Set(err);

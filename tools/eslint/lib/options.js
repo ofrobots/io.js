@@ -1,8 +1,8 @@
 /**
  * @fileoverview Options configuration for optionator.
  * @author George Zahariev
- * See LICENSE in root directory for full license.
  */
+
 "use strict";
 
 //------------------------------------------------------------------------------
@@ -59,6 +59,11 @@ module.exports = optionator({
             type: "String",
             default: "espree",
             description: "Specify the parser to be used"
+        },
+        {
+            option: "parser-options",
+            type: "Object",
+            description: "Specify parser options"
         },
         {
             heading: "Caching"
@@ -168,8 +173,8 @@ module.exports = optionator({
         {
             option: "color",
             type: "Boolean",
-            default: "true",
-            description: "Disable color in piped output"
+            alias: "no-color",
+            description: "Force enabling/disabling of color"
         },
         {
             heading: "Miscellaneous"
@@ -202,13 +207,13 @@ module.exports = optionator({
             option: "version",
             alias: "v",
             type: "Boolean",
-            description: "Outputs the version number"
+            description: "Output the version number"
         },
         {
             option: "inline-config",
             type: "Boolean",
             default: "true",
-            description: "Allow comments to change eslint config/rules"
+            description: "Prevent comments from changing config or rules"
         },
         {
             option: "print-config",
