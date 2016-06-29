@@ -714,7 +714,6 @@
       'target_name': 'cctest',
       'type': 'executable',
       'dependencies': [
-        'deps/openssl/openssl.gyp:openssl',
         'deps/http_parser/http_parser.gyp:http_parser',
         'deps/gtest/gtest.gyp:gtest',
         'deps/uv/uv.gyp:libuv',
@@ -742,14 +741,20 @@
       'conditions': [
         ['v8_inspector=="true"', {
           'dependencies': [
-            'deps/openssl/openssl.gyp:openssl',
             'deps/http_parser/http_parser.gyp:http_parser',
             'deps/uv/uv.gyp:libuv'
           ],
           'sources': [
             'src/inspector_socket.cc',
             'test/cctest/test_inspector_socket.cc'
-          ]
+          ],
+	  'conditions': [
+	    [ 'node_shared_openssl=="false"', {
+	      'dependencies': [
+	        'deps/openssl/openssl.gyp:openssl'
+	      ]
+	    }]
+	  ]
         }]
       ]
     }
