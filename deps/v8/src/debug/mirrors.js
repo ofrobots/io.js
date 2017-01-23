@@ -13,8 +13,6 @@ var IsNaN = global.isNaN;
 var JSONStringify = global.JSON.stringify;
 var MapEntries;
 var MapIteratorNext;
-var promiseStateSymbol = utils.ImportNow("promise_state_symbol");
-var promiseResultSymbol = utils.ImportNow("promise_result_symbol");
 var SetIteratorNext;
 var SetValues;
 
@@ -106,12 +104,6 @@ function ClearMirrorCache(value) {
 }
 
 
-function ObjectIsPromise(value) {
-  return IS_RECEIVER(value) &&
-         !IS_UNDEFINED(%DebugGetProperty(value, promiseStateSymbol));
-}
-
-
 /**
  * Returns the mirror for a specified value or object.
  *
@@ -156,7 +148,7 @@ function MakeMirror(value, opt_transient) {
     mirror = new DateMirror(value);
   } else if (IS_FUNCTION(value)) {
     mirror = new FunctionMirror(value);
-  } else if (IS_REGEXP(value)) {
+  } else if (%IsRegExp(value)) {
     mirror = new RegExpMirror(value);
   } else if (IS_ERROR(value)) {
     mirror = new ErrorMirror(value);
@@ -168,7 +160,7 @@ function MakeMirror(value, opt_transient) {
     mirror = new SetMirror(value);
   } else if (IS_MAP_ITERATOR(value) || IS_SET_ITERATOR(value)) {
     mirror = new IteratorMirror(value);
-  } else if (ObjectIsPromise(value)) {
+  } else if (%is_promise(value)) {
     mirror = new PromiseMirror(value);
   } else if (IS_GENERATOR(value)) {
     mirror = new GeneratorMirror(value);
@@ -231,11 +223,10 @@ function inherits(ctor, superCtor) {
 var kMaxProtocolStringLength = 80;
 
 
-// A copy of the PropertyType enum from property-details.h
+// A copy of the PropertyKind enum from property-details.h
 var PropertyType = {};
-PropertyType.Data                        = 0;
-PropertyType.DataConstant                = 2;
-PropertyType.AccessorConstant            = 3;
+PropertyType.Data     = 0;
+PropertyType.Accessor = 1;
 
 
 // Different attributes for a property.
@@ -257,6 +248,7 @@ var ScopeType = { Global:  0,
                   Block:   5,
                   Script:  6,
                   Eval:    7,
+                  Module:  8,
                 };
 
 /**
@@ -806,7 +798,7 @@ ObjectMirror.prototype.lookupProperty = function(value) {
 
     // Skip properties which are defined through accessors.
     var property = properties[i];
-    if (property.propertyType() != PropertyType.AccessorConstant) {
+    if (property.propertyType() == PropertyType.Data) {
       if (property.value_ === value.value_) {
         return property;
       }
@@ -1272,7 +1264,7 @@ inherits(PromiseMirror, ObjectMirror);
 
 
 function PromiseGetStatus_(value) {
-  var status = %DebugGetProperty(value, promiseStateSymbol);
+  var status = %PromiseStatus(value);
   if (status == 0) return "pending";
   if (status == 1) return "resolved";
   return "rejected";
@@ -1280,7 +1272,7 @@ function PromiseGetStatus_(value) {
 
 
 function PromiseGetValue_(value) {
-  return %DebugGetProperty(value, promiseResultSymbol);
+  return %PromiseResult(value);
 }
 
 
@@ -1539,7 +1531,7 @@ PropertyMirror.prototype.value = function() {
 
 /**
  * Returns whether this property value is an exception.
- * @return {booolean} True if this property value is an exception
+ * @return {boolean} True if this property value is an exception
  */
 PropertyMirror.prototype.isException = function() {
   return this.exception_ ? true : false;
@@ -1552,13 +1544,13 @@ PropertyMirror.prototype.attributes = function() {
 
 
 PropertyMirror.prototype.propertyType = function() {
-  return %DebugPropertyTypeFromDetails(this.details_);
+  return %DebugPropertyKindFromDetails(this.details_);
 };
 
 
 /**
  * Returns whether this property has a getter defined through __defineGetter__.
- * @return {booolean} True if this property has a getter
+ * @return {boolean} True if this property has a getter
  */
 PropertyMirror.prototype.hasGetter = function() {
   return this.getter_ ? true : false;
@@ -1567,7 +1559,7 @@ PropertyMirror.prototype.hasGetter = function() {
 
 /**
  * Returns whether this property has a setter defined through __defineSetter__.
- * @return {booolean} True if this property has a setter
+ * @return {boolean} True if this property has a setter
  */
 PropertyMirror.prototype.hasSetter = function() {
   return this.setter_ ? true : false;
@@ -1610,7 +1602,7 @@ PropertyMirror.prototype.setter = function() {
  */
 PropertyMirror.prototype.isNative = function() {
   return this.is_interceptor_ ||
-         ((this.propertyType() == PropertyType.AccessorConstant) &&
+         ((this.propertyType() == PropertyType.Accessor) &&
           !this.hasGetter() && !this.hasSetter());
 };
 
@@ -1878,6 +1870,15 @@ FrameMirror.prototype.func = function() {
 };
 
 
+FrameMirror.prototype.script = function() {
+  if (!this.script_) {
+    this.script_ = MakeMirror(this.details_.script());
+  }
+
+  return this.script_;
+}
+
+
 FrameMirror.prototype.receiver = function() {
   return MakeMirror(this.details_.receiver());
 };
@@ -1954,12 +1955,9 @@ FrameMirror.prototype.sourcePosition = function() {
 
 
 FrameMirror.prototype.sourceLocation = function() {
-  var func = this.func();
-  if (func.resolved()) {
-    var script = func.script();
-    if (script) {
-      return script.locationFromPosition(this.sourcePosition(), true);
-    }
+  var script = this.script();
+  if (script) {
+    return script.locationFromPosition(this.sourcePosition(), true);
   }
 };
 
@@ -2012,14 +2010,11 @@ FrameMirror.prototype.allScopes = function(opt_ignore_nested_scopes) {
 };
 
 
-FrameMirror.prototype.evaluate = function(source, disable_break,
-                                          opt_context_object) {
+FrameMirror.prototype.evaluate = function(source) {
   return MakeMirror(%DebugEvaluate(this.break_id_,
                                    this.details_.frameId(),
                                    this.details_.inlinedFrameIndex(),
-                                   source,
-                                   TO_BOOLEAN(disable_break),
-                                   opt_context_object));
+                                   source));
 };
 
 
@@ -2468,577 +2463,11 @@ ContextMirror.prototype.data = function() {
   return this.data_;
 };
 
-
-/**
- * Returns a mirror serializer
- *
- * @param {boolean} details Set to true to include details
- * @param {Object} options Options comtrolling the serialization
- *     The following options can be set:
- *       includeSource: include ths full source of scripts
- * @returns {MirrorSerializer} mirror serializer
- */
-function MakeMirrorSerializer(details, options) {
-  return new JSONProtocolSerializer(details, options);
-}
-
-
-/**
- * Object for serializing a mirror objects and its direct references.
- * @param {boolean} details Indicates whether to include details for the mirror
- *     serialized
- * @constructor
- */
-function JSONProtocolSerializer(details, options) {
-  this.details_ = details;
-  this.options_ = options;
-  this.mirrors_ = [ ];
-}
-
-
-/**
- * Returns a serialization of an object reference. The referenced object are
- * added to the serialization state.
- *
- * @param {Mirror} mirror The mirror to serialize
- * @returns {String} JSON serialization
- */
-JSONProtocolSerializer.prototype.serializeReference = function(mirror) {
-  return this.serialize_(mirror, true, true);
-};
-
-
-/**
- * Returns a serialization of an object value. The referenced objects are
- * added to the serialization state.
- *
- * @param {Mirror} mirror The mirror to serialize
- * @returns {String} JSON serialization
- */
-JSONProtocolSerializer.prototype.serializeValue = function(mirror) {
-  var json = this.serialize_(mirror, false, true);
-  return json;
-};
-
-
-/**
- * Returns a serialization of all the objects referenced.
- *
- * @param {Mirror} mirror The mirror to serialize.
- * @returns {Array.<Object>} Array of the referenced objects converted to
- *     protcol objects.
- */
-JSONProtocolSerializer.prototype.serializeReferencedObjects = function() {
-  // Collect the protocol representation of the referenced objects in an array.
-  var content = [];
-
-  // Get the number of referenced objects.
-  var count = this.mirrors_.length;
-
-  for (var i = 0; i < count; i++) {
-    content.push(this.serialize_(this.mirrors_[i], false, false));
-  }
-
-  return content;
-};
-
-
-JSONProtocolSerializer.prototype.includeSource_ = function() {
-  return this.options_ && this.options_.includeSource;
-};
-
-
-JSONProtocolSerializer.prototype.inlineRefs_ = function() {
-  return this.options_ && this.options_.inlineRefs;
-};
-
-
-JSONProtocolSerializer.prototype.maxStringLength_ = function() {
-  if (IS_UNDEFINED(this.options_) ||
-      IS_UNDEFINED(this.options_.maxStringLength)) {
-    return kMaxProtocolStringLength;
-  }
-  return this.options_.maxStringLength;
-};
-
-
-JSONProtocolSerializer.prototype.add_ = function(mirror) {
-  // If this mirror is already in the list just return.
-  for (var i = 0; i < this.mirrors_.length; i++) {
-    if (this.mirrors_[i] === mirror) {
-      return;
-    }
-  }
-
-  // Add the mirror to the list of mirrors to be serialized.
-  this.mirrors_.push(mirror);
-};
-
-
-/**
- * Formats mirror object to protocol reference object with some data that can
- * be used to display the value in debugger.
- * @param {Mirror} mirror Mirror to serialize.
- * @return {Object} Protocol reference object.
- */
-JSONProtocolSerializer.prototype.serializeReferenceWithDisplayData_ =
-    function(mirror) {
-  var o = {};
-  o.ref = mirror.handle();
-  o.type = mirror.type();
-  switch (mirror.type()) {
-    case MirrorType.UNDEFINED_TYPE:
-    case MirrorType.NULL_TYPE:
-    case MirrorType.BOOLEAN_TYPE:
-    case MirrorType.NUMBER_TYPE:
-      o.value = mirror.value();
-      break;
-    case MirrorType.STRING_TYPE:
-      o.value = mirror.getTruncatedValue(this.maxStringLength_());
-      break;
-    case MirrorType.SYMBOL_TYPE:
-      o.description = mirror.description();
-      break;
-    case MirrorType.FUNCTION_TYPE:
-      o.name = mirror.name();
-      o.inferredName = mirror.inferredName();
-      if (mirror.script()) {
-        o.scriptId = mirror.script().id();
-      }
-      break;
-    case MirrorType.ERROR_TYPE:
-    case MirrorType.REGEXP_TYPE:
-      o.value = mirror.toText();
-      break;
-    case MirrorType.OBJECT_TYPE:
-      o.className = mirror.className();
-      break;
-  }
-  return o;
-};
-
-
-JSONProtocolSerializer.prototype.serialize_ = function(mirror, reference,
-                                                       details) {
-  // If serializing a reference to a mirror just return the reference and add
-  // the mirror to the referenced mirrors.
-  if (reference &&
-      (mirror.isValue() || mirror.isScript() || mirror.isContext())) {
-    if (this.inlineRefs_() && mirror.isValue()) {
-      return this.serializeReferenceWithDisplayData_(mirror);
-    } else {
-      this.add_(mirror);
-      return {'ref' : mirror.handle()};
-    }
-  }
-
-  // Collect the JSON property/value pairs.
-  var content = {};
-
-  // Add the mirror handle.
-  if (mirror.isValue() || mirror.isScript() || mirror.isContext()) {
-    content.handle = mirror.handle();
-  }
-
-  // Always add the type.
-  content.type = mirror.type();
-
-  switch (mirror.type()) {
-    case MirrorType.UNDEFINED_TYPE:
-    case MirrorType.NULL_TYPE:
-      // Undefined and null are represented just by their type.
-      break;
-
-    case MirrorType.BOOLEAN_TYPE:
-      // Boolean values are simply represented by their value.
-      content.value = mirror.value();
-      break;
-
-    case MirrorType.NUMBER_TYPE:
-      // Number values are simply represented by their value.
-      content.value = NumberToJSON_(mirror.value());
-      break;
-
-    case MirrorType.STRING_TYPE:
-      // String values might have their value cropped to keep down size.
-      if (this.maxStringLength_() != -1 &&
-          mirror.length() > this.maxStringLength_()) {
-        var str = mirror.getTruncatedValue(this.maxStringLength_());
-        content.value = str;
-        content.fromIndex = 0;
-        content.toIndex = this.maxStringLength_();
-      } else {
-        content.value = mirror.value();
-      }
-      content.length = mirror.length();
-      break;
-
-    case MirrorType.SYMBOL_TYPE:
-      content.description = mirror.description();
-      break;
-
-    case MirrorType.OBJECT_TYPE:
-    case MirrorType.FUNCTION_TYPE:
-    case MirrorType.ERROR_TYPE:
-    case MirrorType.REGEXP_TYPE:
-    case MirrorType.PROMISE_TYPE:
-    case MirrorType.GENERATOR_TYPE:
-      // Add object representation.
-      this.serializeObject_(mirror, content, details);
-      break;
-
-    case MirrorType.PROPERTY_TYPE:
-    case MirrorType.INTERNAL_PROPERTY_TYPE:
-      throw %make_error(kDebugger,
-                     'PropertyMirror cannot be serialized independently');
-      break;
-
-    case MirrorType.FRAME_TYPE:
-      // Add object representation.
-      this.serializeFrame_(mirror, content);
-      break;
-
-    case MirrorType.SCOPE_TYPE:
-      // Add object representation.
-      this.serializeScope_(mirror, content);
-      break;
-
-    case MirrorType.SCRIPT_TYPE:
-      // Script is represented by id, name and source attributes.
-      if (mirror.name()) {
-        content.name = mirror.name();
-      }
-      content.id = mirror.id();
-      content.lineOffset = mirror.lineOffset();
-      content.columnOffset = mirror.columnOffset();
-      content.lineCount = mirror.lineCount();
-      if (mirror.data()) {
-        content.data = mirror.data();
-      }
-      if (this.includeSource_()) {
-        content.source = mirror.source();
-      } else {
-        var sourceStart = mirror.source().substring(0, 80);
-        content.sourceStart = sourceStart;
-      }
-      content.sourceLength = mirror.source().length;
-      content.scriptType = mirror.scriptType();
-      content.compilationType = mirror.compilationType();
-      // For compilation type eval emit information on the script from which
-      // eval was called if a script is present.
-      if (mirror.compilationType() == 1 &&
-          mirror.evalFromScript()) {
-        content.evalFromScript =
-            this.serializeReference(mirror.evalFromScript());
-        var evalFromLocation = mirror.evalFromLocation();
-        if (evalFromLocation) {
-          content.evalFromLocation = { line: evalFromLocation.line,
-                                       column: evalFromLocation.column };
-        }
-        if (mirror.evalFromFunctionName()) {
-          content.evalFromFunctionName = mirror.evalFromFunctionName();
-        }
-      }
-      if (mirror.context()) {
-        content.context = this.serializeReference(mirror.context());
-      }
-      break;
-
-    case MirrorType.CONTEXT_TYPE:
-      content.data = mirror.data();
-      break;
-  }
-
-  // Always add the text representation.
-  content.text = mirror.toText();
-
-  // Create and return the JSON string.
-  return content;
-};
-
-
-/**
- * Serialize object information to the following JSON format.
- *
- *   {"className":"<class name>",
- *    "constructorFunction":{"ref":<number>},
- *    "protoObject":{"ref":<number>},
- *    "prototypeObject":{"ref":<number>},
- *    "namedInterceptor":<boolean>,
- *    "indexedInterceptor":<boolean>,
- *    "properties":[<properties>],
- *    "internalProperties":[<internal properties>]}
- */
-JSONProtocolSerializer.prototype.serializeObject_ = function(mirror, content,
-                                                             details) {
-  // Add general object properties.
-  content.className = mirror.className();
-  content.constructorFunction =
-      this.serializeReference(mirror.constructorFunction());
-  content.protoObject = this.serializeReference(mirror.protoObject());
-  content.prototypeObject = this.serializeReference(mirror.prototypeObject());
-
-  // Add flags to indicate whether there are interceptors.
-  if (mirror.hasNamedInterceptor()) {
-    content.namedInterceptor = true;
-  }
-  if (mirror.hasIndexedInterceptor()) {
-    content.indexedInterceptor = true;
-  }
-
-  if (mirror.isFunction()) {
-    // Add function specific properties.
-    content.name = mirror.name();
-    if (!IS_UNDEFINED(mirror.inferredName())) {
-      content.inferredName = mirror.inferredName();
-    }
-    content.resolved = mirror.resolved();
-    if (mirror.resolved()) {
-      content.source = mirror.source();
-    }
-    if (mirror.script()) {
-      content.script = this.serializeReference(mirror.script());
-      content.scriptId = mirror.script().id();
-
-      serializeLocationFields(mirror.sourceLocation(), content);
-    }
-
-    content.scopes = [];
-    for (var i = 0; i < mirror.scopeCount(); i++) {
-      var scope = mirror.scope(i);
-      content.scopes.push({
-        type: scope.scopeType(),
-        index: i
-      });
-    }
-  }
-
-  if (mirror.isGenerator()) {
-    // Add generator specific properties.
-
-    // Either 'running', 'closed', or 'suspended'.
-    content.status = mirror.status();
-
-    content.func = this.serializeReference(mirror.func())
-    content.receiver = this.serializeReference(mirror.receiver())
-
-    // If the generator is suspended, the content add line/column properties.
-    serializeLocationFields(mirror.sourceLocation(), content);
-
-    // TODO(wingo): Also serialize a reference to the context (scope chain).
-  }
-
-  if (mirror.isDate()) {
-    // Add date specific properties.
-    content.value = mirror.value();
-  }
-
-  if (mirror.isPromise()) {
-    // Add promise specific properties.
-    content.status = mirror.status();
-    content.promiseValue = this.serializeReference(mirror.promiseValue());
-  }
-
-  // Add actual properties - named properties followed by indexed properties.
-  var properties = mirror.propertyNames();
-  for (var i = 0; i < properties.length; i++) {
-    var propertyMirror = mirror.property(properties[i]);
-    properties[i] = this.serializeProperty_(propertyMirror);
-    if (details) {
-      this.add_(propertyMirror.value());
-    }
-  }
-  content.properties = properties;
-
-  var internalProperties = mirror.internalProperties();
-  if (internalProperties.length > 0) {
-    var ip = [];
-    for (var i = 0; i < internalProperties.length; i++) {
-      ip.push(this.serializeInternalProperty_(internalProperties[i]));
-    }
-    content.internalProperties = ip;
-  }
-};
-
-
-/**
- * Serialize location information to the following JSON format:
- *
- *   "position":"<position>",
- *   "line":"<line>",
- *   "column":"<column>",
- *
- * @param {SourceLocation} location The location to serialize, may be undefined.
- */
-function serializeLocationFields (location, content) {
-  if (!location) {
-    return;
-  }
-  content.position = location.position;
-  var line = location.line;
-  if (!IS_UNDEFINED(line)) {
-    content.line = line;
-  }
-  var column = location.column;
-  if (!IS_UNDEFINED(column)) {
-    content.column = column;
-  }
-}
-
-
-/**
- * Serialize property information to the following JSON format for building the
- * array of properties.
- *
- *   {"name":"<property name>",
- *    "attributes":<number>,
- *    "propertyType":<number>,
- *    "ref":<number>}
- *
- * If the attribute for the property is PropertyAttribute.None it is not added.
- * Here are a couple of examples.
- *
- *   {"name":"hello","propertyType":0,"ref":1}
- *   {"name":"length","attributes":7,"propertyType":3,"ref":2}
- *
- * @param {PropertyMirror} propertyMirror The property to serialize.
- * @returns {Object} Protocol object representing the property.
- */
-JSONProtocolSerializer.prototype.serializeProperty_ = function(propertyMirror) {
-  var result = {};
-
-  result.name = propertyMirror.name();
-  var propertyValue = propertyMirror.value();
-  if (this.inlineRefs_() && propertyValue.isValue()) {
-    result.value = this.serializeReferenceWithDisplayData_(propertyValue);
-  } else {
-    if (propertyMirror.attributes() != PropertyAttribute.None) {
-      result.attributes = propertyMirror.attributes();
-    }
-    result.propertyType = propertyMirror.propertyType();
-    result.ref = propertyValue.handle();
-  }
-  return result;
-};
-
-
-/**
- * Serialize internal property information to the following JSON format for
- * building the array of properties.
- *
- *   {"name":"<property name>",
- *    "ref":<number>}
- *
- *   {"name":"[[BoundThis]]","ref":117}
- *
- * @param {InternalPropertyMirror} propertyMirror The property to serialize.
- * @returns {Object} Protocol object representing the property.
- */
-JSONProtocolSerializer.prototype.serializeInternalProperty_ =
-    function(propertyMirror) {
-  var result = {};
-
-  result.name = propertyMirror.name();
-  var propertyValue = propertyMirror.value();
-  if (this.inlineRefs_() && propertyValue.isValue()) {
-    result.value = this.serializeReferenceWithDisplayData_(propertyValue);
-  } else {
-    result.ref = propertyValue.handle();
-  }
-  return result;
-};
-
-
-JSONProtocolSerializer.prototype.serializeFrame_ = function(mirror, content) {
-  content.index = mirror.index();
-  content.receiver = this.serializeReference(mirror.receiver());
-  var func = mirror.func();
-  content.func = this.serializeReference(func);
-  var script = func.script();
-  if (script) {
-    content.script = this.serializeReference(script);
-  }
-  content.constructCall = mirror.isConstructCall();
-  content.atReturn = mirror.isAtReturn();
-  if (mirror.isAtReturn()) {
-    content.returnValue = this.serializeReference(mirror.returnValue());
-  }
-  content.debuggerFrame = mirror.isDebuggerFrame();
-  var x = new GlobalArray(mirror.argumentCount());
-  for (var i = 0; i < mirror.argumentCount(); i++) {
-    var arg = {};
-    var argument_name = mirror.argumentName(i);
-    if (argument_name) {
-      arg.name = argument_name;
-    }
-    arg.value = this.serializeReference(mirror.argumentValue(i));
-    x[i] = arg;
-  }
-  content.arguments = x;
-  var x = new GlobalArray(mirror.localCount());
-  for (var i = 0; i < mirror.localCount(); i++) {
-    var local = {};
-    local.name = mirror.localName(i);
-    local.value = this.serializeReference(mirror.localValue(i));
-    x[i] = local;
-  }
-  content.locals = x;
-  serializeLocationFields(mirror.sourceLocation(), content);
-  var source_line_text = mirror.sourceLineText();
-  if (!IS_UNDEFINED(source_line_text)) {
-    content.sourceLineText = source_line_text;
-  }
-
-  content.scopes = [];
-  for (var i = 0; i < mirror.scopeCount(); i++) {
-    var scope = mirror.scope(i);
-    content.scopes.push({
-      type: scope.scopeType(),
-      index: i
-    });
-  }
-};
-
-
-JSONProtocolSerializer.prototype.serializeScope_ = function(mirror, content) {
-  content.index = mirror.scopeIndex();
-  content.frameIndex = mirror.frameIndex();
-  content.type = mirror.scopeType();
-  content.object = this.inlineRefs_() ?
-                   this.serializeValue(mirror.scopeObject()) :
-                   this.serializeReference(mirror.scopeObject());
-};
-
-
-/**
- * Convert a number to a protocol value. For all finite numbers the number
- * itself is returned. For non finite numbers NaN, Infinite and
- * -Infinite the string representation "NaN", "Infinite" or "-Infinite"
- * (not including the quotes) is returned.
- *
- * @param {number} value The number value to convert to a protocol value.
- * @returns {number|string} Protocol value.
- */
-function NumberToJSON_(value) {
-  if (IsNaN(value)) {
-    return 'NaN';
-  }
-  if (!NUMBER_IS_FINITE(value)) {
-    if (value > 0) {
-      return 'Infinity';
-    } else {
-      return '-Infinity';
-    }
-  }
-  return value;
-}
-
 // ----------------------------------------------------------------------------
 // Exports
 
 utils.InstallFunctions(global, DONT_ENUM, [
   "MakeMirror", MakeMirror,
-  "MakeMirrorSerializer", MakeMirrorSerializer,
   "LookupMirror", LookupMirror,
   "ToggleMirrorCache", ToggleMirrorCache,
   "MirrorCacheIsEmpty", MirrorCacheIsEmpty,

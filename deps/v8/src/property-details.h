@@ -62,30 +62,19 @@ STATIC_ASSERT(SKIP_SYMBOLS ==
               static_cast<PropertyFilter>(v8::PropertyFilter::SKIP_SYMBOLS));
 
 class Smi;
-class Type;
 class TypeInfo;
 
-// Type of properties.
 // Order of kinds is significant.
 // Must fit in the BitField PropertyDetails::KindField.
 enum PropertyKind { kData = 0, kAccessor = 1 };
 
-
 // Order of modes is significant.
-// Must fit in the BitField PropertyDetails::StoreModeField.
+// Must fit in the BitField PropertyDetails::LocationField.
 enum PropertyLocation { kField = 0, kDescriptor = 1 };
 
-
-// Order of properties is significant.
-// Must fit in the BitField PropertyDetails::TypeField.
-// A copy of this is in debug/mirrors.js.
-enum PropertyType {
-  DATA = (kField << 1) | kData,
-  DATA_CONSTANT = (kDescriptor << 1) | kData,
-  ACCESSOR = (kField << 1) | kAccessor,
-  ACCESSOR_CONSTANT = (kDescriptor << 1) | kAccessor
-};
-
+// Order of modes is significant.
+// Must fit in the BitField PropertyDetails::ConstnessField.
+enum PropertyConstness { kMutable = 0, kConst = 1 };
 
 class Representation {
  public:
@@ -235,38 +224,29 @@ enum class PropertyCellConstantType {
 // They are used both in property dictionaries and instance descriptors.
 class PropertyDetails BASE_EMBEDDED {
  public:
-  PropertyDetails(PropertyAttributes attributes, PropertyType type, int index,
+  // Property details for dictionary mode properties/elements.
+  PropertyDetails(PropertyKind kind, PropertyAttributes attributes, int index,
                   PropertyCellType cell_type) {
-    value_ = TypeField::encode(type) | AttributesField::encode(attributes) |
+    value_ = KindField::encode(kind) | LocationField::encode(kField) |
+             AttributesField::encode(attributes) |
              DictionaryStorageField::encode(index) |
              PropertyCellTypeField::encode(cell_type);
-
-    DCHECK(type == this->type());
-    DCHECK(attributes == this->attributes());
   }
 
-  PropertyDetails(PropertyAttributes attributes,
-                  PropertyType type,
-                  Representation representation,
-                  int field_index = 0) {
-    value_ = TypeField::encode(type)
-        | AttributesField::encode(attributes)
-        | RepresentationField::encode(EncodeRepresentation(representation))
-        | FieldIndexField::encode(field_index);
-  }
-
-  PropertyDetails(PropertyAttributes attributes, PropertyKind kind,
-                  PropertyLocation location, Representation representation,
-                  int field_index = 0) {
-    value_ = KindField::encode(kind) | LocationField::encode(location) |
-             AttributesField::encode(attributes) |
+  // Property details for fast mode properties.
+  PropertyDetails(PropertyKind kind, PropertyAttributes attributes,
+                  PropertyLocation location, PropertyConstness constness,
+                  Representation representation, int field_index = 0) {
+    value_ = KindField::encode(kind) | AttributesField::encode(attributes) |
+             LocationField::encode(location) |
+             ConstnessField::encode(constness) |
              RepresentationField::encode(EncodeRepresentation(representation)) |
              FieldIndexField::encode(field_index);
   }
 
   static PropertyDetails Empty(
       PropertyCellType cell_type = PropertyCellType::kNoCell) {
-    return PropertyDetails(NONE, DATA, 0, cell_type);
+    return PropertyDetails(kData, NONE, 0, cell_type);
   }
 
   int pointer() const { return DescriptorPointer::decode(value_); }
@@ -310,8 +290,7 @@ class PropertyDetails BASE_EMBEDDED {
 
   PropertyKind kind() const { return KindField::decode(value_); }
   PropertyLocation location() const { return LocationField::decode(value_); }
-
-  PropertyType type() const { return TypeField::decode(value_); }
+  PropertyConstness constness() const { return ConstnessField::decode(value_); }
 
   PropertyAttributes attributes() const {
     return AttributesField::decode(value_);
@@ -344,28 +323,30 @@ class PropertyDetails BASE_EMBEDDED {
   // Bit fields in value_ (type, shift, size). Must be public so the
   // constants can be embedded in generated code.
   class KindField : public BitField<PropertyKind, 0, 1> {};
-  class LocationField : public BitField<PropertyLocation, 1, 1> {};
-  class AttributesField : public BitField<PropertyAttributes, 2, 3> {};
+  class LocationField : public BitField<PropertyLocation, KindField::kNext, 1> {
+  };
+  class ConstnessField
+      : public BitField<PropertyConstness, LocationField::kNext, 1> {};
+  class AttributesField
+      : public BitField<PropertyAttributes, ConstnessField::kNext, 3> {};
   static const int kAttributesReadOnlyMask =
       (READ_ONLY << AttributesField::kShift);
 
   // Bit fields for normalized objects.
-  class PropertyCellTypeField : public BitField<PropertyCellType, 5, 2> {};
-  class DictionaryStorageField : public BitField<uint32_t, 7, 24> {};
+  class PropertyCellTypeField
+      : public BitField<PropertyCellType, AttributesField::kNext, 2> {};
+  class DictionaryStorageField
+      : public BitField<uint32_t, PropertyCellTypeField::kNext, 23> {};
 
   // Bit fields for fast objects.
-  class RepresentationField : public BitField<uint32_t, 5, 4> {};
+  class RepresentationField
+      : public BitField<uint32_t, AttributesField::kNext, 4> {};
   class DescriptorPointer
-      : public BitField<uint32_t, 9, kDescriptorIndexBitCount> {};  // NOLINT
-  class FieldIndexField
-      : public BitField<uint32_t, 9 + kDescriptorIndexBitCount,
+      : public BitField<uint32_t, RepresentationField::kNext,
                         kDescriptorIndexBitCount> {};  // NOLINT
-
-  // NOTE: TypeField overlaps with KindField and LocationField.
-  class TypeField : public BitField<PropertyType, 0, 2> {};
-  STATIC_ASSERT(KindField::kNext == LocationField::kShift);
-  STATIC_ASSERT(TypeField::kShift == KindField::kShift);
-  STATIC_ASSERT(TypeField::kNext == LocationField::kNext);
+  class FieldIndexField : public BitField<uint32_t, DescriptorPointer::kNext,
+                                          kDescriptorIndexBitCount> {
+  };  // NOLINT
 
   // All bits for both fast and slow objects must fit in a smi.
   STATIC_ASSERT(DictionaryStorageField::kNext <= 31);
@@ -377,6 +358,19 @@ class PropertyDetails BASE_EMBEDDED {
   // For our gdb macros, we should perhaps change these in the future.
   void Print(bool dictionary_mode);
 #endif
+
+  enum PrintMode {
+    kPrintAttributes = 1 << 0,
+    kPrintFieldIndex = 1 << 1,
+    kPrintRepresentation = 1 << 2,
+    kPrintPointer = 1 << 3,
+
+    kForProperties = kPrintFieldIndex,
+    kForTransitions = kPrintAttributes,
+    kPrintFull = -1,
+  };
+  void PrintAsSlowTo(std::ostream& out);
+  void PrintAsFastTo(std::ostream& out, PrintMode mode = kPrintFull);
 
  private:
   PropertyDetails(int value, int pointer) {
@@ -393,10 +387,25 @@ class PropertyDetails BASE_EMBEDDED {
   uint32_t value_;
 };
 
+// kField location is more general than kDescriptor, kDescriptor generalizes
+// only to itself.
+inline bool IsGeneralizableTo(PropertyLocation a, PropertyLocation b) {
+  return b == kField || a == kDescriptor;
+}
+
+// kMutable constness is more general than kConst, kConst generalizes only to
+// itself.
+inline bool IsGeneralizableTo(PropertyConstness a, PropertyConstness b) {
+  return b == kMutable || a == kConst;
+}
+
+inline PropertyConstness GeneralizeConstness(PropertyConstness a,
+                                             PropertyConstness b) {
+  return a == kMutable ? kMutable : b;
+}
 
 std::ostream& operator<<(std::ostream& os,
                          const PropertyAttributes& attributes);
-std::ostream& operator<<(std::ostream& os, const PropertyDetails& details);
 }  // namespace internal
 }  // namespace v8
 
