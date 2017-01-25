@@ -111,7 +111,7 @@ function BadModule() {
   return {caller: caller};
 }
 
-assertTrue(%IsNotAsmWasmCode(BadModule));
+assertFalse(%IsAsmWasmCode(BadModule));
 
 
 function TestReturnInBlock() {
@@ -988,6 +988,7 @@ function TestFunctionTable(stdlib, foreign, buffer) {
   return {caller:caller};
 }
 
+print("TestFunctionTable...");
 var module = TestFunctionTable(stdlib);
 assertEquals(55, module.caller(0, 0, 33, 22));
 assertEquals(11, module.caller(0, 1, 33, 22));
@@ -1040,6 +1041,7 @@ function TestForeignFunctions() {
   assertEquals(103, module.caller(23, 103));
 }
 
+print("TestForeignFunctions...");
 TestForeignFunctions();
 
 
@@ -1080,6 +1082,7 @@ function TestForeignFunctionMultipleUse() {
   assertEquals(89, module.caller(83, 83.25));
 }
 
+print("TestForeignFunctionMultipleUse...");
 TestForeignFunctionMultipleUse();
 
 
@@ -1171,6 +1174,7 @@ function TestForeignVariables() {
   TestCase(undefined, 0, NaN, 0, NaN);
 }
 
+print("TestForeignVariables...");
 TestForeignVariables();
 
 
@@ -1384,8 +1388,9 @@ assertWasm(7, TestIntegerMultiplyBothWays);
     }
     return {func: func};
   }
+  print("TestBadAssignDoubleFromIntish...");
   Module(stdlib);
-  assertTrue(%IsNotAsmWasmCode(Module));
+  assertFalse(%IsAsmWasmCode(Module));
 })();
 
 
@@ -1399,8 +1404,9 @@ assertWasm(7, TestIntegerMultiplyBothWays);
     }
     return {func: func};
   }
+  print("TestBadAssignIntFromDouble...");
   Module(stdlib);
-  assertTrue(%IsNotAsmWasmCode(Module));
+  assertFalse(%IsAsmWasmCode(Module));
 })();
 
 
@@ -1413,8 +1419,9 @@ assertWasm(7, TestIntegerMultiplyBothWays);
     }
     return {func: func};
   }
+  print("TestBadMultiplyIntish...");
   Module(stdlib);
-  assertTrue(%IsNotAsmWasmCode(Module));
+  assertFalse(%IsAsmWasmCode(Module));
 })();
 
 
@@ -1427,8 +1434,9 @@ assertWasm(7, TestIntegerMultiplyBothWays);
     }
     return {func: func};
   }
+  print("TestBadCastFromInt...");
   Module(stdlib);
-  assertTrue(%IsNotAsmWasmCode(Module));
+  assertFalse(%IsAsmWasmCode(Module));
 })();
 
 
@@ -1472,7 +1480,35 @@ assertWasm(-34359738370.75, TestNegativeDouble);
   }
 
   Module(stdlib);
-  assertTrue(%IsNotAsmWasmCode(Module));
+  assertFalse(%IsAsmWasmCode(Module));
+})();
+
+
+(function TestBadExportKey() {
+  function Module() {
+    "use asm";
+    function func() {
+    }
+    return {123: func};
+  }
+
+  Module(stdlib);
+  assertFalse(%IsAsmWasmCode(Module));
+})();
+
+
+(function TestUnicodeExportKey() {
+  function Module() {
+    "use asm";
+    function func() {
+      return 42;
+    }
+    return {"\u00d1\u00e6": func};
+  }
+
+  var m = Module(stdlib);
+  assertEquals(42, m.Ñæ());
+  assertValidAsm(Module);
 })();
 
 
@@ -1581,3 +1617,129 @@ function TestLoopsWithUnsigned() {
 }
 
 assertWasm(323, TestLoopsWithUnsigned);
+
+
+function TestSingleFunctionModule() {
+  "use asm";
+  function add(a, b) {
+    a = a | 0;
+    b = b | 0;
+    return (a + b) | 0;
+  }
+  return add;
+}
+
+assertEquals(7, TestSingleFunctionModule()(3, 4));
+
+
+function TestNotZero() {
+  "use asm";
+  function caller() {
+    if (!0) {
+      return 44;
+    } else {
+      return 55;
+    }
+    return 0;
+  }
+  return {caller: caller};
+}
+
+assertWasm(44, TestNotZero);
+
+
+function TestNotOne() {
+  "use asm";
+  function caller() {
+    if (!1) {
+      return 44;
+    } else {
+      return 55;
+    }
+    return 0;
+  }
+  return {caller: caller};
+}
+
+assertWasm(55, TestNotOne);
+
+
+function TestDotfulFloat(stdlib) {
+  "use asm";
+  var fround = stdlib.Math.fround;
+  var foo = fround(55.0);
+  function caller() {
+    return +foo;
+  }
+  return {caller: caller};
+}
+
+assertWasm(55, TestDotfulFloat);
+
+
+function TestDotfulLocalFloat(stdlib) {
+  "use asm";
+  var fround = stdlib.Math.fround;
+  function caller() {
+    var foo = fround(55.0);
+    return +foo;
+  }
+  return {caller: caller};
+}
+
+assertWasm(55, TestDotfulLocalFloat);
+
+
+function TestDotlessFloat(stdlib) {
+  "use asm";
+  var fround = stdlib.Math.fround;
+  var foo = fround(55);
+  function caller() {
+    return +foo;
+  }
+  return {caller: caller};
+}
+
+assertWasm(55, TestDotlessFloat);
+
+
+function TestDotlessLocalFloat(stdlib) {
+  "use asm";
+  var fround = stdlib.Math.fround;
+  function caller() {
+    var foo = fround(55);
+    return +foo;
+  }
+  return {caller: caller};
+}
+
+assertWasm(55, TestDotlessLocalFloat);
+
+
+function TestFloatGlobals(stdlib) {
+  "use asm";
+  var fround = stdlib.Math.fround;
+  var foo = fround(1.25);
+  function caller() {
+    foo = fround(foo + fround(1.0));
+    foo = fround(foo + fround(1.0));
+    return +foo;
+  }
+  return {caller: caller};
+}
+
+assertWasm(3.25, TestFloatGlobals);
+
+
+(function TestExportTwice() {
+  function asmModule() {
+    "use asm";
+    function foo() {
+      return 42;
+    }
+    return {bar: foo, baz: foo};
+  }
+  var m = asmModule();
+  assertEquals(42, m.bar());
+  assertEquals(42, m.baz());
+})();

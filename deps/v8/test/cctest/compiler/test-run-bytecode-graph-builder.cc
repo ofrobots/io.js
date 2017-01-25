@@ -4,12 +4,13 @@
 
 #include <utility>
 
-#include "src/compiler.h"
+#include "src/compilation-info.h"
 #include "src/compiler/pipeline.h"
 #include "src/execution.h"
 #include "src/handles.h"
 #include "src/interpreter/bytecode-array-builder.h"
 #include "src/interpreter/interpreter.h"
+#include "src/objects-inl.h"
 #include "src/parsing/parse-info.h"
 #include "test/cctest/cctest.h"
 
@@ -80,8 +81,6 @@ class BytecodeGraphTester {
     i::FLAG_always_opt = false;
     i::FLAG_allow_natives_syntax = true;
     i::FLAG_loop_assignment_analysis = false;
-    // Ensure handler table is generated.
-    isolate->interpreter()->Initialize();
   }
   virtual ~BytecodeGraphTester() {}
 
@@ -124,7 +123,7 @@ class BytecodeGraphTester {
 
     // TODO(mstarzinger): We should be able to prime CompilationInfo without
     // having to instantiate a ParseInfo first. Fix this!
-    ParseInfo parse_info(zone_, function);
+    ParseInfo parse_info(zone_, handle(function->shared()));
 
     CompilationInfo compilation_info(&parse_info, function);
     compilation_info.SetOptimizing();
@@ -1067,6 +1066,105 @@ TEST(BytecodeGraphBuilderLookupSlot) {
   }
 }
 
+TEST(BytecodeGraphBuilderLookupContextSlot) {
+  HandleAndZoneScope scope;
+  Isolate* isolate = scope.main_isolate();
+  Zone* zone = scope.main_zone();
+  Factory* factory = isolate->factory();
+
+  // Testing with eval called in the current context.
+  const char* inner_eval_prologue = "var x = 0; function inner() {";
+  const char* inner_eval_epilogue = "}; return inner();";
+
+  ExpectedSnippet<0> inner_eval_snippets[] = {
+      {"eval(''); return x;", {factory->NewNumber(0)}},
+      {"eval('var x = 1'); return x;", {factory->NewNumber(1)}},
+      {"'use strict'; eval('var x = 1'); return x;", {factory->NewNumber(0)}}};
+
+  for (size_t i = 0; i < arraysize(inner_eval_snippets); i++) {
+    ScopedVector<char> script(1024);
+    SNPrintF(script, "function %s(p1) { %s %s %s } ; %s() ;", kFunctionName,
+             inner_eval_prologue, inner_eval_snippets[i].code_snippet,
+             inner_eval_epilogue, kFunctionName);
+
+    BytecodeGraphTester tester(isolate, zone, script.start());
+    auto callable = tester.GetCallable<>();
+    Handle<Object> return_value = callable().ToHandleChecked();
+    CHECK(return_value->SameValue(*inner_eval_snippets[i].return_value()));
+  }
+
+  // Testing with eval called in a parent context.
+  const char* outer_eval_prologue = "";
+  const char* outer_eval_epilogue =
+      "function inner() { return x; }; return inner();";
+
+  ExpectedSnippet<0> outer_eval_snippets[] = {
+      {"var x = 0; eval('');", {factory->NewNumber(0)}},
+      {"var x = 0; eval('var x = 1');", {factory->NewNumber(1)}},
+      {"'use strict'; var x = 0; eval('var x = 1');", {factory->NewNumber(0)}}};
+
+  for (size_t i = 0; i < arraysize(outer_eval_snippets); i++) {
+    ScopedVector<char> script(1024);
+    SNPrintF(script, "function %s() { %s %s %s } ; %s() ;", kFunctionName,
+             outer_eval_prologue, outer_eval_snippets[i].code_snippet,
+             outer_eval_epilogue, kFunctionName);
+
+    BytecodeGraphTester tester(isolate, zone, script.start());
+    auto callable = tester.GetCallable<>();
+    Handle<Object> return_value = callable().ToHandleChecked();
+    CHECK(return_value->SameValue(*outer_eval_snippets[i].return_value()));
+  }
+}
+
+TEST(BytecodeGraphBuilderLookupGlobalSlot) {
+  HandleAndZoneScope scope;
+  Isolate* isolate = scope.main_isolate();
+  Zone* zone = scope.main_zone();
+  Factory* factory = isolate->factory();
+
+  // Testing with eval called in the current context.
+  const char* inner_eval_prologue = "x = 0; function inner() {";
+  const char* inner_eval_epilogue = "}; return inner();";
+
+  ExpectedSnippet<0> inner_eval_snippets[] = {
+      {"eval(''); return x;", {factory->NewNumber(0)}},
+      {"eval('var x = 1'); return x;", {factory->NewNumber(1)}},
+      {"'use strict'; eval('var x = 1'); return x;", {factory->NewNumber(0)}}};
+
+  for (size_t i = 0; i < arraysize(inner_eval_snippets); i++) {
+    ScopedVector<char> script(1024);
+    SNPrintF(script, "function %s(p1) { %s %s %s } ; %s() ;", kFunctionName,
+             inner_eval_prologue, inner_eval_snippets[i].code_snippet,
+             inner_eval_epilogue, kFunctionName);
+
+    BytecodeGraphTester tester(isolate, zone, script.start());
+    auto callable = tester.GetCallable<>();
+    Handle<Object> return_value = callable().ToHandleChecked();
+    CHECK(return_value->SameValue(*inner_eval_snippets[i].return_value()));
+  }
+
+  // Testing with eval called in a parent context.
+  const char* outer_eval_prologue = "";
+  const char* outer_eval_epilogue =
+      "function inner() { return x; }; return inner();";
+
+  ExpectedSnippet<0> outer_eval_snippets[] = {
+      {"x = 0; eval('');", {factory->NewNumber(0)}},
+      {"x = 0; eval('var x = 1');", {factory->NewNumber(1)}},
+      {"'use strict'; x = 0; eval('var x = 1');", {factory->NewNumber(0)}}};
+
+  for (size_t i = 0; i < arraysize(outer_eval_snippets); i++) {
+    ScopedVector<char> script(1024);
+    SNPrintF(script, "function %s() { %s %s %s } ; %s() ;", kFunctionName,
+             outer_eval_prologue, outer_eval_snippets[i].code_snippet,
+             outer_eval_epilogue, kFunctionName);
+
+    BytecodeGraphTester tester(isolate, zone, script.start());
+    auto callable = tester.GetCallable<>();
+    Handle<Object> return_value = callable().ToHandleChecked();
+    CHECK(return_value->SameValue(*outer_eval_snippets[i].return_value()));
+  }
+}
 
 TEST(BytecodeGraphBuilderLookupSlotWide) {
   HandleAndZoneScope scope;
@@ -2930,35 +3028,32 @@ TEST(BytecodeGraphBuilderIllegalConstDeclaration) {
   }
 }
 
+static int debug_break_count = 0;
+static void DebugEventCounter(const v8::Debug::EventDetails& event_details) {
+  if (event_details.GetEvent() == v8::Break) debug_break_count++;
+}
+
 TEST(BytecodeGraphBuilderDebuggerStatement) {
-  FLAG_expose_debug_as = "debug";
   HandleAndZoneScope scope;
   Isolate* isolate = scope.main_isolate();
   Zone* zone = scope.main_zone();
 
+  v8::Debug::SetDebugEventListener(CcTest::isolate(), DebugEventCounter);
+
   ExpectedSnippet<0> snippet = {
-      "var Debug = debug.Debug;"
-      "var count = 0;"
       "function f() {"
       "  debugger;"
       "}"
-      "function listener(event) {"
-      "  if (event == Debug.DebugEvent.Break) count++;"
-      "}"
-      "Debug.setListener(listener);"
-      "f();"
-      "Debug.setListener(null);"
-      "return count;",
-      {handle(Smi::FromInt(1), isolate)}};
+      "f();",
+      {isolate->factory()->undefined_value()}};
 
-  ScopedVector<char> script(1024);
-  SNPrintF(script, "function %s() { %s }\n%s();", kFunctionName,
-           snippet.code_snippet, kFunctionName);
-
-  BytecodeGraphTester tester(isolate, zone, script.start());
+  BytecodeGraphTester tester(isolate, zone, snippet.code_snippet);
   auto callable = tester.GetCallable<>();
   Handle<Object> return_value = callable().ToHandleChecked();
-  CHECK(return_value->SameValue(*snippet.return_value()));
+
+  v8::Debug::SetDebugEventListener(CcTest::isolate(), nullptr);
+  CHECK(return_value.is_identical_to(snippet.return_value()));
+  CHECK_EQ(2, debug_break_count);
 }
 
 }  // namespace compiler

@@ -31,7 +31,7 @@ EscapeAnalysisReducer::EscapeAnalysisReducer(Editor* editor, JSGraph* jsgraph,
       fully_reduced_(static_cast<int>(jsgraph->graph()->NodeCount() * 2), zone),
       exists_virtual_allocate_(escape_analysis->ExistsVirtualAllocate()) {}
 
-Reduction EscapeAnalysisReducer::Reduce(Node* node) {
+Reduction EscapeAnalysisReducer::ReduceNode(Node* node) {
   if (node->id() < static_cast<NodeId>(fully_reduced_.length()) &&
       fully_reduced_.Contains(node->id())) {
     return NoChange();
@@ -61,8 +61,7 @@ Reduction EscapeAnalysisReducer::Reduce(Node* node) {
         break;
       }
       bool depends_on_object_state = false;
-      for (int i = 0; i < node->InputCount(); i++) {
-        Node* input = node->InputAt(i);
+      for (Node* input : node->inputs()) {
         switch (input->opcode()) {
           case IrOpcode::kAllocate:
           case IrOpcode::kFinishRegion:
@@ -97,6 +96,32 @@ Reduction EscapeAnalysisReducer::Reduce(Node* node) {
   return NoChange();
 }
 
+Reduction EscapeAnalysisReducer::Reduce(Node* node) {
+  Reduction reduction = ReduceNode(node);
+  if (reduction.Changed() && node != reduction.replacement()) {
+    escape_analysis()->SetReplacement(node, reduction.replacement());
+  }
+  return reduction;
+}
+
+namespace {
+
+Node* MaybeGuard(JSGraph* jsgraph, Zone* zone, Node* original,
+                 Node* replacement) {
+  // We might need to guard the replacement if the type of the {replacement}
+  // node is not in a sub-type relation to the type of the the {original} node.
+  Type* const replacement_type = NodeProperties::GetType(replacement);
+  Type* const original_type = NodeProperties::GetType(original);
+  if (!replacement_type->Is(original_type)) {
+    Node* const control = NodeProperties::GetControlInput(original);
+    replacement = jsgraph->graph()->NewNode(
+        jsgraph->common()->TypeGuard(original_type), replacement, control);
+    NodeProperties::SetType(replacement, original_type);
+  }
+  return replacement;
+}
+
+}  // namespace
 
 Reduction EscapeAnalysisReducer::ReduceLoad(Node* node) {
   DCHECK(node->opcode() == IrOpcode::kLoadField ||
@@ -104,12 +129,15 @@ Reduction EscapeAnalysisReducer::ReduceLoad(Node* node) {
   if (node->id() < static_cast<NodeId>(fully_reduced_.length())) {
     fully_reduced_.Add(node->id());
   }
-  if (Node* rep = escape_analysis()->GetReplacement(node)) {
-    isolate()->counters()->turbo_escape_loads_replaced()->Increment();
-    TRACE("Replaced #%d (%s) with #%d (%s)\n", node->id(),
-          node->op()->mnemonic(), rep->id(), rep->op()->mnemonic());
-    ReplaceWithValue(node, rep);
-    return Replace(rep);
+  if (escape_analysis()->IsVirtual(NodeProperties::GetValueInput(node, 0))) {
+    if (Node* rep = escape_analysis()->GetReplacement(node)) {
+      isolate()->counters()->turbo_escape_loads_replaced()->Increment();
+      TRACE("Replaced #%d (%s) with #%d (%s)\n", node->id(),
+            node->op()->mnemonic(), rep->id(), rep->op()->mnemonic());
+      rep = MaybeGuard(jsgraph(), zone(), node, rep);
+      ReplaceWithValue(node, rep);
+      return Replace(rep);
+    }
   }
   return NoChange();
 }
@@ -183,7 +211,7 @@ Reduction EscapeAnalysisReducer::ReduceReferenceEqual(Node* node) {
         escape_analysis()->CompareVirtualObjects(left, right)) {
       ReplaceWithValue(node, jsgraph()->TrueConstant());
       TRACE("Replaced ref eq #%d with true\n", node->id());
-      Replace(jsgraph()->TrueConstant());
+      return Replace(jsgraph()->TrueConstant());
     }
     // Right-hand side is not a virtual object, or a different one.
     ReplaceWithValue(node, jsgraph()->FalseConstant());
@@ -305,6 +333,12 @@ Node* EscapeAnalysisReducer::ReduceStateValueInput(Node* node, int node_index,
   if (input->opcode() == IrOpcode::kFinishRegion ||
       input->opcode() == IrOpcode::kAllocate) {
     if (escape_analysis()->IsVirtual(input)) {
+      if (escape_analysis()->IsCyclicObjectState(effect, input)) {
+        // TODO(mstarzinger): Represent cyclic object states differently to
+        // ensure the scheduler can properly handle such object states.
+        compilation_failed_ = true;
+        return nullptr;
+      }
       if (Node* object_state =
               escape_analysis()->GetOrCreateObjectState(effect, input)) {
         if (node_multiused || (multiple_users && !already_cloned)) {
