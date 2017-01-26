@@ -30,7 +30,7 @@ function update() {
 
   let ready = 0;
   for (const child of children)
-    ready += RegExp(`break in .*?${filename}:1`).test(child.test.stdout);
+    ready += RegExp(`break in .*?${filename}:3`).test(child.test.stdout);
 
   if (ready === children.length)
     for (const child of children)
