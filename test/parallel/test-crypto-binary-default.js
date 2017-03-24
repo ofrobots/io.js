@@ -5,16 +5,16 @@
 
 var common = require('../common');
 var assert = require('assert');
-var constants = require('constants');
 
 if (!common.hasCrypto) {
-  console.log('1..0 # Skipped: missing crypto');
+  common.skip('missing crypto');
   return;
 }
 var crypto = require('crypto');
 var tls = require('tls');
+const DH_NOT_SUITABLE_GENERATOR = crypto.constants.DH_NOT_SUITABLE_GENERATOR;
 
-crypto.DEFAULT_ENCODING = 'binary';
+crypto.DEFAULT_ENCODING = 'latin1';
 
 var fs = require('fs');
 var path = require('path');
@@ -30,19 +30,19 @@ var rsaKeyPem = fs.readFileSync(common.fixturesDir + '/test_rsa_privkey.pem',
 
 // PFX tests
 assert.doesNotThrow(function() {
-  tls.createSecureContext({pfx:certPfx, passphrase:'sample'});
+  tls.createSecureContext({pfx: certPfx, passphrase: 'sample'});
 });
 
 assert.throws(function() {
-  tls.createSecureContext({pfx:certPfx});
+  tls.createSecureContext({pfx: certPfx});
 }, 'mac verify failure');
 
 assert.throws(function() {
-  tls.createSecureContext({pfx:certPfx, passphrase:'test'});
+  tls.createSecureContext({pfx: certPfx, passphrase: 'test'});
 }, 'mac verify failure');
 
 assert.throws(function() {
-  tls.createSecureContext({pfx:'sample', passphrase:'test'});
+  tls.createSecureContext({pfx: 'sample', passphrase: 'test'});
 }, 'not enough data');
 
 // Test HMAC
@@ -346,9 +346,12 @@ var a3 = crypto.createHash('sha512').update('Test123').digest(); // binary
 var a4 = crypto.createHash('sha1').update('Test123').digest('buffer');
 
 if (!common.hasFipsCrypto) {
-  var a0 = crypto.createHash('md5').update('Test123').digest('binary');
-  assert.equal(a0, 'h\u00ea\u00cb\u0097\u00d8o\fF!\u00fa+\u000e\u0017\u00ca' +
-               '\u00bd\u008c', 'Test MD5 as binary');
+  var a0 = crypto.createHash('md5').update('Test123').digest('latin1');
+  assert.equal(
+    a0,
+    'h\u00ea\u00cb\u0097\u00d8o\fF!\u00fa+\u000e\u0017\u00ca\u00bd\u008c',
+    'Test MD5 as latin1'
+  );
 }
 
 assert.equal(a1, '8308651804facb7b9af8ffc53a33a22d6a1c8ac2', 'Test SHA1');
@@ -361,11 +364,13 @@ assert.equal(a3, '\u00c1(4\u00f1\u0003\u001fd\u0097!O\'\u00d4C/&Qz\u00d4' +
                  '\u00d6\u0092\u00a3\u00df\u00a2i\u00a1\u009b\n\n*\u000f' +
                  '\u00d7\u00d6\u00a2\u00a8\u0085\u00e3<\u0083\u009c\u0093' +
                  '\u00c2\u0006\u00da0\u00a1\u00879(G\u00ed\'',
-             'Test SHA512 as assumed binary');
+             'Test SHA512 as assumed latin1');
 
-assert.deepEqual(a4,
-                 Buffer.from('8308651804facb7b9af8ffc53a33a22d6a1c8ac2', 'hex'),
-                 'Test SHA1');
+assert.deepStrictEqual(
+  a4,
+  Buffer.from('8308651804facb7b9af8ffc53a33a22d6a1c8ac2', 'hex'),
+  'Test SHA1'
+);
 
 // Test multiple updates to same hash
 var h1 = crypto.createHash('sha1').update('Test123').digest('hex');
@@ -525,7 +530,7 @@ var dh2 = crypto.createDiffieHellman(p1, 'base64');
 var key1 = dh1.generateKeys();
 var key2 = dh2.generateKeys('hex');
 var secret1 = dh1.computeSecret(key2, 'hex', 'base64');
-var secret2 = dh2.computeSecret(key1, 'binary', 'buffer');
+var secret2 = dh2.computeSecret(key1, 'latin1', 'buffer');
 
 assert.equal(secret1, secret2.toString('base64'));
 
@@ -551,7 +556,7 @@ var p = 'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74' +
         '4FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7ED' +
         'EE386BFB5A899FA5AE9F24117C4B1FE649286651ECE65381FFFFFFFFFFFFFFFF';
 var d = crypto.createDiffieHellman(p, 'hex');
-assert.equal(d.verifyError, constants.DH_NOT_SUITABLE_GENERATOR);
+assert.equal(d.verifyError, DH_NOT_SUITABLE_GENERATOR);
 
 // Test RSA key signing/verification
 var rsaSign = crypto.createSign('RSA-SHA1');

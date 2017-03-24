@@ -1,8 +1,6 @@
 /**
  * @fileoverview A class of the code path segment.
  * @author Toru Nagashima
- * @copyright 2015 Toru Nagashima. All rights reserved.
- * See LICENSE file in root directory for full license.
  */
 
 "use strict";
@@ -11,8 +9,7 @@
 // Requirements
 //------------------------------------------------------------------------------
 
-var assert = require("assert"),
-    debug = require("./debug-helpers");
+var debug = require("./debug-helpers");
 
 //------------------------------------------------------------------------------
 // Helpers
@@ -79,6 +76,7 @@ function isReachable(segment) {
  * @param {boolean} reachable - A flag which shows this is reachable.
  */
 function CodePathSegment(id, allPrevSegments, reachable) {
+
     /**
      * The identifier of this code path.
      * Rules use it to store additional information of each rule.
@@ -120,7 +118,8 @@ function CodePathSegment(id, allPrevSegments, reachable) {
 
     // Internal data.
     Object.defineProperty(this, "internal", {value: {
-        used: false
+        used: false,
+        loopedPrevSegments: []
     }});
 
     /* istanbul ignore if */
@@ -129,6 +128,20 @@ function CodePathSegment(id, allPrevSegments, reachable) {
         this.internal.exitNodes = [];
     }
 }
+
+CodePathSegment.prototype = {
+    constructor: CodePathSegment,
+
+    /**
+     * Checks a given previous segment is coming from the end of a loop.
+     *
+     * @param {CodePathSegment} segment - A previous segment to check.
+     * @returns {boolean} `true` if the segment is coming from the end of a loop.
+     */
+    isLoopedPrevSegment: function(segment) {
+        return this.internal.loopedPrevSegments.indexOf(segment) !== -1;
+    }
+};
 
 /**
  * Creates the root segment.
@@ -162,7 +175,13 @@ CodePathSegment.newNext = function(id, allPrevSegments) {
  * @returns {CodePathSegment} The created segment.
  */
 CodePathSegment.newUnreachable = function(id, allPrevSegments) {
-    return new CodePathSegment(id, flattenUnusedSegments(allPrevSegments), false);
+    var segment = new CodePathSegment(id, flattenUnusedSegments(allPrevSegments), false);
+
+    // In `if (a) return a; foo();` case, the unreachable segment preceded by
+    // the return statement is not used but must not be remove.
+    CodePathSegment.markUsed(segment);
+
+    return segment;
 };
 
 /**
@@ -187,10 +206,13 @@ CodePathSegment.newDisconnected = function(id, allPrevSegments) {
  * @returns {void}
  */
 CodePathSegment.markUsed = function(segment) {
-    assert(!segment.internal.used, segment.id + " is marked twice.");
+    if (segment.internal.used) {
+        return;
+    }
     segment.internal.used = true;
 
     var i;
+
     if (segment.reachable) {
         for (i = 0; i < segment.allPrevSegments.length; ++i) {
             var prevSegment = segment.allPrevSegments[i];
@@ -203,6 +225,17 @@ CodePathSegment.markUsed = function(segment) {
             segment.allPrevSegments[i].allNextSegments.push(segment);
         }
     }
+};
+
+/**
+ * Marks a previous segment as looped.
+ *
+ * @param {CodePathSegment} segment - A segment.
+ * @param {CodePathSegment} prevSegment - A previous segment to mark.
+ * @returns {void}
+ */
+CodePathSegment.markPrevSegmentAsLooped = function(segment, prevSegment) {
+    segment.internal.loopedPrevSegments.push(prevSegment);
 };
 
 module.exports = CodePathSegment;

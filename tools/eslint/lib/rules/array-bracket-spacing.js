@@ -1,10 +1,6 @@
 /**
  * @fileoverview Disallows or enforces spaces inside of array brackets.
  * @author Jamund Ferguson
- * @copyright 2015 Jamund Ferguson. All rights reserved.
- * @copyright 2014 Brandyn Bennett. All rights reserved.
- * @copyright 2014 Michael Ficarra. No rights reserved.
- * @copyright 2014 Vignesh Anand. All rights reserved.
  */
 "use strict";
 
@@ -19,27 +15,27 @@ module.exports = {
         docs: {
             description: "Enforce spacing inside array brackets",
             category: "Stylistic Issues",
-            recommended: false,
-            fixable: "whitespace"
+            recommended: false
         },
+        fixable: "whitespace",
         schema: [
             {
-                "enum": ["always", "never"]
+                enum: ["always", "never"]
             },
             {
-                "type": "object",
-                "properties": {
-                    "singleValue": {
-                        "type": "boolean"
+                type: "object",
+                properties: {
+                    singleValue: {
+                        type: "boolean"
                     },
-                    "objectsInArrays": {
-                        "type": "boolean"
+                    objectsInArrays: {
+                        type: "boolean"
                     },
-                    "arraysInArrays": {
-                        "type": "boolean"
+                    arraysInArrays: {
+                        type: "boolean"
                     }
                 },
-                "additionalProperties": false
+                additionalProperties: false
             }
         ]
     },
@@ -82,6 +78,7 @@ module.exports = {
                 message: "There should be no space after '" + token.value + "'",
                 fix: function(fixer) {
                     var nextToken = context.getSourceCode().getTokenAfter(token);
+
                     return fixer.removeRange([token.range[1], nextToken.range[0]]);
                 }
             });
@@ -100,6 +97,7 @@ module.exports = {
                 message: "There should be no space before '" + token.value + "'",
                 fix: function(fixer) {
                     var previousToken = context.getSourceCode().getTokenBefore(token);
+
                     return fixer.removeRange([previousToken.range[1], token.range[0]]);
                 }
             });

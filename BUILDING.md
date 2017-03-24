@@ -9,7 +9,7 @@ If you consistently can reproduce a test failure, search for it in the
 file a new issue.
 
 
-### Unix / Macintosh
+### Unix / OS X
 
 Prerequisites:
 
@@ -17,7 +17,16 @@ Prerequisites:
 * `clang` and `clang++` 3.4 or newer
 * Python 2.6 or 2.7
 * GNU Make 3.81 or newer
+
+On OS X, you will also need:
+* [Xcode](https://developer.apple.com/xcode/download/)
+  * You also need to install the `Command Line Tools` via Xcode. You can find 
+    this under the menu `Xcode -> Preferences -> Downloads`
+  * This step will install `gcc` and the related toolchain containing `make`
+
+On FreeBSD and OpenBSD, you may also need:
 * libexecinfo (FreeBSD and OpenBSD only)
+
 
 ```text
 $ ./configure
@@ -41,11 +50,36 @@ To run the tests:
 $ make test
 ```
 
+To run the native module tests:
+
+```text
+$ make test-addons
+```
+
+To run the npm test suite:
+
+*note: to run the suite on node v4 or earlier you must first*
+*run `make install`*
+
+```
+$ make test-npm
+```
+
 To build the documentation:
+
+This will build Node.js first (if necessary) and then use it to build the docs:
 
 ```text
 $ make doc
 ```
+
+If you have an existing Node.js you can build just the docs with:
+
+```text
+$ NODE=node make doc-only
+```
+
+(Where `node` is the path to your executable.)
 
 To read the documentation:
 
@@ -87,7 +121,14 @@ To test if Node.js was built correctly:
 $ node -e "console.log('Hello from Node.js ' + process.version)"
 ```
 
-### Android / Android based devices, aka. Firefox OS
+### Android / Android-based devices (e.g., Firefox OS)
+
+Although these instructions for building on Android are provided, please note
+that Android is not an officially supported platform at this time. Patches to
+improve the Android build are accepted. However, there is no testing on Android
+in the current continuous integration environment. The participation of people
+dedicated and determined to improve Android building, testing, and support is
+encouraged.
 
 Be sure you have downloaded and extracted [Android NDK]
 (https://developer.android.com/tools/sdk/ndk/index.html)
@@ -101,29 +142,14 @@ $ make
 
 ### `Intl` (ECMA-402) support:
 
-[Intl](https://github.com/nodejs/node/wiki/Intl) support is not
-enabled by default.
+[Intl](https://github.com/nodejs/node/wiki/Intl) support is
+enabled by default, with English data only.
 
+#### Default: `small-icu` (English only) support
 
-#### "small" (English only) support
-
-This option will build with "small" (English only) support, but
-the full `Intl` (ECMA-402) APIs.  With `--download=all` it will
-download the ICU library as needed.
-
-##### Unix / Macintosh:
-
-```text
-$ ./configure --with-intl=small-icu --download=all
-```
-
-##### Windows:
-
-```text
-> vcbuild small-icu download-all
-```
-
-The `small-icu` mode builds with English-only data. You can add full
+By default, only English data is included, but
+the full `Intl` (ECMA-402) APIs.  It does not need to download
+any dependencies to function. You can add full
 data at runtime.
 
 *Note:* more docs are on
@@ -132,9 +158,10 @@ data at runtime.
 #### Build with full ICU support (all locales supported by ICU):
 
 With the `--download=all`, this may download ICU if you don't have an
-ICU in `deps/icu`.
+ICU in `deps/icu`. (The embedded `small-icu` included in the default
+Node.js source does not include all locales.)
 
-##### Unix / Macintosh:
+##### Unix / OS X:
 
 ```text
 $ ./configure --with-intl=full-icu --download=all
@@ -148,22 +175,22 @@ $ ./configure --with-intl=full-icu --download=all
 
 #### Building without Intl support
 
-The `Intl` object will not be available. This is the default at
-present, so this option is not normally needed.
+The `Intl` object will not be available, nor some other APIs such as
+`String.normalize`.
 
-##### Unix / Macintosh:
+##### Unix / OS X:
 
 ```text
-$ ./configure --with-intl=none
+$ ./configure --without-intl
 ```
 
 ##### Windows:
 
 ```text
-> vcbuild intl-none
+> vcbuild without-intl
 ```
 
-#### Use existing installed ICU (Unix / Macintosh only):
+#### Use existing installed ICU (Unix / OS X only):
 
 ```text
 $ pkg-config --modversion icu-i18n && ./configure --with-intl=system-icu
@@ -179,7 +206,7 @@ You can find other ICU releases at
 Download the file named something like `icu4c-**##.#**-src.tgz` (or
 `.zip`).
 
-##### Unix / Macintosh
+##### Unix / OS X
 
 ```text
 # from an already-unpacked ICU:

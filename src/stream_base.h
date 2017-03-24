@@ -1,6 +1,8 @@
 #ifndef SRC_STREAM_BASE_H_
 #define SRC_STREAM_BASE_H_
 
+#if defined(NODE_WANT_INTERNALS) && NODE_WANT_INTERNALS
+
 #include "env.h"
 #include "async-wrap.h"
 #include "req-wrap.h"
@@ -136,7 +138,7 @@ class StreamResource {
                          uv_handle_type pending,
                          void* ctx);
 
-  StreamResource() {
+  StreamResource() : bytes_read_(0) {
   }
   virtual ~StreamResource() = default;
 
@@ -160,9 +162,11 @@ class StreamResource {
       alloc_cb_.fn(size, buf, alloc_cb_.ctx);
   }
 
-  inline void OnRead(size_t nread,
+  inline void OnRead(ssize_t nread,
                      const uv_buf_t* buf,
                      uv_handle_type pending = UV_UNKNOWN_HANDLE) {
+    if (nread > 0)
+      bytes_read_ += static_cast<uint64_t>(nread);
     if (!read_cb_.is_empty())
       read_cb_.fn(nread, buf, pending, read_cb_.ctx);
   }
@@ -182,6 +186,9 @@ class StreamResource {
   Callback<AfterWriteCb> after_write_cb_;
   Callback<AllocCb> alloc_cb_;
   Callback<ReadCb> read_cb_;
+  uint64_t bytes_read_;
+
+  friend class StreamBase;
 };
 
 class StreamBase : public StreamResource {
@@ -249,6 +256,10 @@ class StreamBase : public StreamResource {
   static void GetExternal(v8::Local<v8::String> key,
                           const v8::PropertyCallbackInfo<v8::Value>& args);
 
+  template <class Base>
+  static void GetBytesRead(v8::Local<v8::String> key,
+                           const v8::PropertyCallbackInfo<v8::Value>& args);
+
   template <class Base,
             int (StreamBase::*Method)(  // NOLINT(whitespace/parens)
       const v8::FunctionCallbackInfo<v8::Value>& args)>
@@ -260,5 +271,7 @@ class StreamBase : public StreamResource {
 };
 
 }  // namespace node
+
+#endif  // defined(NODE_WANT_INTERNALS) && NODE_WANT_INTERNALS
 
 #endif  // SRC_STREAM_BASE_H_

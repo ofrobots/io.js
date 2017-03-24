@@ -7,7 +7,7 @@ const assert = require('assert');
 const hostExpect = 'localhost';
 const fs = require('fs');
 const path = require('path');
-const fixtures = path.resolve(__dirname, '../fixtures/keys');
+const fixtures = path.join(common.fixturesDir, 'keys');
 const options = {
   key: fs.readFileSync(fixtures + '/agent1-key.pem'),
   cert: fs.readFileSync(fixtures + '/agent1-cert.pem')
@@ -18,7 +18,7 @@ let gotHttpResp = false;
 if (common.hasCrypto) {
   var https = require('https');
 } else {
-  console.log('1..0 # Skipped: missing crypto');
+  common.skip('missing crypto');
 }
 
 process.on('exit', function() {

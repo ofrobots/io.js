@@ -102,6 +102,14 @@ assert(
     Buffer.from(b.toString('ascii'), 'ascii')
     .includes(Buffer.from('d', 'ascii'), 0, 'ascii'));
 
+// test latin1 encoding
+assert(
+    Buffer.from(b.toString('latin1'), 'latin1')
+    .includes('d', 0, 'latin1'));
+assert(
+    Buffer.from(b.toString('latin1'), 'latin1')
+    .includes(Buffer.from('d', 'latin1'), 0, 'latin1'));
+
 // test binary encoding
 assert(
     Buffer.from(b.toString('binary'), 'binary')
@@ -164,7 +172,7 @@ assert(!mixedByteStringUtf8.includes('\u0396'));
 // Long string that isn't a simple repeat of a shorter string.
 var longString = 'A';
 for (let i = 66; i < 76; i++) {  // from 'B' to 'K'
-  longString =  longString + String.fromCharCode(i) + longString;
+  longString = longString + String.fromCharCode(i) + longString;
 }
 
 const longBufferString = Buffer.from(longString);

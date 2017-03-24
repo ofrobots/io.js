@@ -22,7 +22,6 @@
 
 namespace node {
 
-using v8::Array;
 using v8::Context;
 using v8::EscapableHandleScope;
 using v8::FunctionCallbackInfo;
@@ -30,12 +29,8 @@ using v8::FunctionTemplate;
 using v8::HandleScope;
 using v8::Integer;
 using v8::Local;
-using v8::Number;
 using v8::Object;
-using v8::PropertyCallbackInfo;
-using v8::String;
 using v8::True;
-using v8::Undefined;
 using v8::Value;
 
 
@@ -91,7 +86,7 @@ int StreamWrap::GetFD() {
   int fd = -1;
 #if !defined(_WIN32)
   if (stream() != nullptr)
-    fd = stream()->io_watcher.fd;
+    uv_fileno(reinterpret_cast<uv_handle_t*>(stream()), &fd);
 #endif
   return fd;
 }
@@ -175,7 +170,8 @@ static Local<Object> AcceptHandle(Environment* env, StreamWrap* parent) {
   if (wrap_obj.IsEmpty())
     return Local<Object>();
 
-  WrapType* wrap = Unwrap<WrapType>(wrap_obj);
+  WrapType* wrap;
+  ASSIGN_OR_RETURN_UNWRAP(&wrap, wrap_obj, Local<Object>());
   handle = wrap->UVHandle();
 
   if (uv_accept(parent->stream(), reinterpret_cast<uv_stream_t*>(handle)))
@@ -267,7 +263,8 @@ void StreamWrap::OnRead(uv_stream_t* handle,
 
 
 void StreamWrap::SetBlocking(const FunctionCallbackInfo<Value>& args) {
-  StreamWrap* wrap = Unwrap<StreamWrap>(args.Holder());
+  StreamWrap* wrap;
+  ASSIGN_OR_RETURN_UNWRAP(&wrap, args.Holder());
 
   CHECK_GT(args.Length(), 0);
   if (!wrap->IsAlive())

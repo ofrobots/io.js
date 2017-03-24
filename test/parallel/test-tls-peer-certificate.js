@@ -3,7 +3,7 @@ var common = require('../common');
 var assert = require('assert');
 
 if (!common.hasCrypto) {
-  console.log('1..0 # Skipped: missing crypto');
+  common.skip('missing crypto');
   return;
 }
 var tls = require('tls');
@@ -40,8 +40,8 @@ server.listen(common.PORT, function() {
     assert.equal(peerCert.exponent, '0x10001');
     assert.equal(peerCert.fingerprint,
                  '8D:06:3A:B3:E5:8B:85:29:72:4F:7D:1B:54:CD:95:19:3C:EF:6F:AA');
-    assert.deepEqual(peerCert.infoAccess['OCSP - URI'],
-                     [ 'http://ocsp.nodejs.org/' ]);
+    assert.deepStrictEqual(peerCert.infoAccess['OCSP - URI'],
+                           [ 'http://ocsp.nodejs.org/' ]);
 
     var issuer = peerCert.issuerCertificate;
     assert.ok(issuer.issuerCertificate === issuer);

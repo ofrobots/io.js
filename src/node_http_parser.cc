@@ -15,12 +15,6 @@
 #include <stdlib.h>  // free()
 #include <string.h>  // strdup()
 
-#if defined(_MSC_VER)
-#define strcasecmp _stricmp
-#else
-#include <strings.h>  // strcasecmp()
-#endif
-
 // This is a binding to http_parser (https://github.com/joyent/http-parser)
 // The goal is to decouple sockets from parsing for more javascript-level
 // agility. A Buffer is read from a socket and passed to parser.execute().
@@ -300,7 +294,7 @@ class Parser : public AsyncWrap {
       return -1;
     }
 
-    return head_response->IsTrue() ? 1 : 0;
+    return head_response->IntegerValue();
   }
 
 
@@ -374,7 +368,8 @@ class Parser : public AsyncWrap {
 
 
   static void Close(const FunctionCallbackInfo<Value>& args) {
-    Parser* parser = Unwrap<Parser>(args.Holder());
+    Parser* parser;
+    ASSIGN_OR_RETURN_UNWRAP(&parser, args.Holder());
 
     if (--parser->refcount_ == 0)
       delete parser;
@@ -397,7 +392,8 @@ class Parser : public AsyncWrap {
 
   // var bytesParsed = parser->execute(buffer);
   static void Execute(const FunctionCallbackInfo<Value>& args) {
-    Parser* parser = Unwrap<Parser>(args.Holder());
+    Parser* parser;
+    ASSIGN_OR_RETURN_UNWRAP(&parser, args.Holder());
     CHECK(parser->current_buffer_.IsEmpty());
     CHECK_EQ(parser->current_buffer_len_, 0);
     CHECK_EQ(parser->current_buffer_data_, nullptr);
@@ -422,7 +418,8 @@ class Parser : public AsyncWrap {
   static void Finish(const FunctionCallbackInfo<Value>& args) {
     Environment* env = Environment::GetCurrent(args);
 
-    Parser* parser = Unwrap<Parser>(args.Holder());
+    Parser* parser;
+    ASSIGN_OR_RETURN_UNWRAP(&parser, args.Holder());
 
     CHECK(parser->current_buffer_.IsEmpty());
     parser->got_exception_ = false;
@@ -453,7 +450,8 @@ class Parser : public AsyncWrap {
         static_cast<http_parser_type>(args[0]->Int32Value());
 
     CHECK(type == HTTP_REQUEST || type == HTTP_RESPONSE);
-    Parser* parser = Unwrap<Parser>(args.Holder());
+    Parser* parser;
+    ASSIGN_OR_RETURN_UNWRAP(&parser, args.Holder());
     // Should always be called from the same context.
     CHECK_EQ(env, parser->env());
     parser->Init(type);
@@ -463,7 +461,8 @@ class Parser : public AsyncWrap {
   template <bool should_pause>
   static void Pause(const FunctionCallbackInfo<Value>& args) {
     Environment* env = Environment::GetCurrent(args);
-    Parser* parser = Unwrap<Parser>(args.Holder());
+    Parser* parser;
+    ASSIGN_OR_RETURN_UNWRAP(&parser, args.Holder());
     // Should always be called from the same context.
     CHECK_EQ(env, parser->env());
     http_parser_pause(&parser->parser_, should_pause);
@@ -471,7 +470,8 @@ class Parser : public AsyncWrap {
 
 
   static void Consume(const FunctionCallbackInfo<Value>& args) {
-    Parser* parser = Unwrap<Parser>(args.Holder());
+    Parser* parser;
+    ASSIGN_OR_RETURN_UNWRAP(&parser, args.Holder());
     Local<External> stream_obj = args[0].As<External>();
     StreamBase* stream = static_cast<StreamBase*>(stream_obj->Value());
     CHECK_NE(stream, nullptr);
@@ -487,7 +487,8 @@ class Parser : public AsyncWrap {
 
 
   static void Unconsume(const FunctionCallbackInfo<Value>& args) {
-    Parser* parser = Unwrap<Parser>(args.Holder());
+    Parser* parser;
+    ASSIGN_OR_RETURN_UNWRAP(&parser, args.Holder());
 
     // Already unconsumed
     if (parser->prev_alloc_cb_.is_empty())
@@ -509,7 +510,8 @@ class Parser : public AsyncWrap {
 
 
   static void GetCurrentBuffer(const FunctionCallbackInfo<Value>& args) {
-    Parser* parser = Unwrap<Parser>(args.Holder());
+    Parser* parser;
+    ASSIGN_OR_RETURN_UNWRAP(&parser, args.Holder());
 
     Local<Object> ret = Buffer::Copy(
         parser->env(),
@@ -759,7 +761,7 @@ void InitHttpParser(Local<Object> target,
     methods->Set(num, FIXED_ONE_BYTE_STRING(env->isolate(), #string));
   HTTP_METHOD_MAP(V)
 #undef V
-  t->Set(FIXED_ONE_BYTE_STRING(env->isolate(), "methods"), methods);
+  target->Set(FIXED_ONE_BYTE_STRING(env->isolate(), "methods"), methods);
 
   env->SetProtoMethod(t, "close", Parser::Close);
   env->SetProtoMethod(t, "execute", Parser::Execute);

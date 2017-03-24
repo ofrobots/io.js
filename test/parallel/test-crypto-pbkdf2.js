@@ -3,7 +3,7 @@ var common = require('../common');
 var assert = require('assert');
 
 if (!common.hasCrypto) {
-  console.log('1..0 # Skipped: missing crypto');
+  common.skip('missing crypto');
   return;
 }
 var crypto = require('crypto');
@@ -13,10 +13,10 @@ var crypto = require('crypto');
 //
 function testPBKDF2(password, salt, iterations, keylen, expected) {
   var actual = crypto.pbkdf2Sync(password, salt, iterations, keylen, 'sha256');
-  assert.equal(actual.toString('binary'), expected);
+  assert.equal(actual.toString('latin1'), expected);
 
   crypto.pbkdf2(password, salt, iterations, keylen, 'sha256', (err, actual) => {
-    assert.equal(actual.toString('binary'), expected);
+    assert.equal(actual.toString('latin1'), expected);
   });
 }
 

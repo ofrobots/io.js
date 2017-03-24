@@ -1,8 +1,6 @@
 /**
  * @fileoverview An object that caches and applies source code fixes.
  * @author Nicholas C. Zakas
- * @copyright 2015 Nicholas C. Zakas. All rights reserved.
- * See LICENSE file in root directory for full license.
  */
 "use strict";
 
@@ -105,11 +103,14 @@ SourceCodeFixer.applyFixes = function(sourceCode, messages) {
 
             if (end < lastFixPos) {
                 if (start < 0) {
+
                     // Remove BOM.
                     prefix = "";
                     start = 0;
                 }
+
                 if (start === 0 && insertionText[0] === BOM) {
+
                     // Set BOM.
                     prefix = BOM;
                     insertionText = insertionText.slice(1);
